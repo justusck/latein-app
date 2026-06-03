@@ -1,13 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { StatsHeader } from '@/components/stats-header';
-import { Card } from '@/components/ui/card';
+import { PageHeader } from '@/components/ui/page-header';
 import { Screen } from '@/components/ui/screen';
-import { Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { PARADIGMS } from '@/data/paradigms';
 import { useTheme } from '@/hooks/use-theme';
 import { getTopicsWithProgress, type TopicWithProgress } from '@/lib/grammar';
@@ -31,97 +29,210 @@ export default function GrammarScreen() {
   );
 
   return (
-    <Screen scroll>
-      <ThemedText type="title" style={{ marginBottom: Spacing.two }}>Grammatik</ThemedText>
-      <StatsHeader />
-      <Text style={[styles.intro, { color: theme.textSecondary }]}>
-        Systematischer Aufbau: Jeder Baustein schaltet den nächsten frei. Schließe eine Lektion mit
-        mindestens einem Stern ab, um weiterzukommen.
-      </Text>
+    <Screen scroll padded={false}>
+      <PageHeader title="Grammatik" />
+      <View style={styles.content}>
 
+      {/* ── Skill tree by stage ── */}
       {STAGE_ORDER.map((stage) => {
         const stageTopics = topics.filter((t) => t.topic.stage === stage);
         if (stageTopics.length === 0) return null;
         return (
-          <View key={stage} style={{ marginTop: Spacing.three }}>
-            <Text style={[styles.stage, { color: theme.purple }]}>{STAGE_LABELS[stage] ?? stage}</Text>
-            <View style={{ gap: Spacing.two, marginTop: Spacing.two }}>
-              {stageTopics.map((t) => (
-                <TopicRow key={t.topic.id} item={t} theme={theme} />
+          <View key={stage} style={styles.stageSection}>
+            <View style={styles.stageHead}>
+              <Text style={[styles.stageLabel, { color: theme.primary }]}>
+                {STAGE_LABELS[stage] ?? stage}
+              </Text>
+              <View style={[styles.stageLine, { backgroundColor: theme.border }]} />
+            </View>
+            <View style={[styles.topicList, { borderColor: theme.border }]}>
+              {stageTopics.map((t, i) => (
+                <TopicRow
+                  key={t.topic.id}
+                  item={t}
+                  theme={theme}
+                  last={i === stageTopics.length - 1}
+                />
               ))}
             </View>
           </View>
         );
       })}
 
-      <Text style={[styles.stage, { color: theme.purple, marginTop: Spacing.four }]}>Formentrainer</Text>
-      <Text style={[styles.intro, { color: theme.textSecondary, marginTop: 2 }]}>
-        Übe Deklinations- und Konjugationstabellen aktiv — fülle die Formen selbst aus.
-      </Text>
-      <View style={{ gap: Spacing.two, marginTop: Spacing.two }}>
-        {PARADIGMS.map((p) => (
-          <Card key={p.id} onPress={() => router.push(`/trainer/${p.id}`)}>
-            <View style={styles.trainerRow}>
-              <View style={[styles.trainerIcon, { backgroundColor: theme.muted }]}>
-                <Ionicons name={p.kind === 'noun' ? 'cube-outline' : 'flash-outline'} size={18} color={theme.primary} />
+      {/* ── Formentrainer ── */}
+      <View style={styles.stageSection}>
+        <View style={styles.stageHead}>
+          <Text style={[styles.stageLabel, { color: theme.primary }]}>Formentrainer</Text>
+          <View style={[styles.stageLine, { backgroundColor: theme.border }]} />
+        </View>
+        <Text style={[styles.stageCaption, { color: theme.textSecondary }]}>
+          Fülle Deklinations- und Konjugationstabellen selbst aus.
+        </Text>
+        <View style={[styles.topicList, { borderColor: theme.border }]}>
+          {PARADIGMS.map((p, i) => (
+            <Pressable
+              key={p.id}
+              onPress={() => router.push(`/trainer/${p.id}`)}
+              style={({ pressed }) => [
+                styles.row,
+                i < PARADIGMS.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+                pressed && { opacity: 0.7 },
+              ]}>
+              <View style={[styles.rowIcon, { backgroundColor: theme.muted }]}>
+                <Ionicons
+                  name={p.kind === 'noun' ? 'layers-outline' : 'flash-outline'}
+                  size={15}
+                  color={theme.primary}
+                />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.topicTitle, { color: theme.text }]}>{p.title}</Text>
-                <Text style={[styles.topicSummary, { color: theme.textSecondary }]}>{p.subtitle}</Text>
+                <Text style={[styles.rowTitle, { color: theme.text }]}>{p.title}</Text>
+                <Text style={[styles.rowSub, { color: theme.textSecondary }]} numberOfLines={1}>
+                  {p.subtitle}
+                </Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
-            </View>
-          </Card>
-        ))}
+              <Ionicons name="chevron-forward" size={15} color={theme.border} />
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
       </View>
     </Screen>
   );
 }
 
-function TopicRow({ item, theme }: { item: TopicWithProgress; theme: ReturnType<typeof useTheme> }) {
+// ── TopicRow ───────────────────────────────────────────────────────────────
+
+function TopicRow({
+  item,
+  theme,
+  last,
+}: {
+  item: TopicWithProgress;
+  theme: ReturnType<typeof useTheme>;
+  last: boolean;
+}) {
   const { topic, stars, unlocked } = item;
+
   return (
-    <Card
+    <Pressable
+      onPress={unlocked ? () => router.push(`/grammar/${topic.id}`) : undefined}
       disabled={!unlocked}
-      onPress={unlocked ? () => router.push(`/grammar/${topic.id}`) : undefined}>
-      <View style={styles.topicHeader}>
-        <View style={[styles.numBadge, { backgroundColor: unlocked ? theme.primary : theme.muted }]}>
-          {unlocked ? (
-            <Text style={styles.numText}>{topic.orderIndex + 1}</Text>
-          ) : (
-            <Ionicons name="lock-closed" size={14} color={theme.textSecondary} />
-          )}
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.topicTitle, { color: theme.text }]}>{topic.title}</Text>
-          <Text style={[styles.topicSummary, { color: theme.textSecondary }]} numberOfLines={2}>
+      style={({ pressed }) => [
+        styles.row,
+        !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+        pressed && unlocked && { opacity: 0.7 },
+      ]}>
+      {/* Number or lock badge */}
+      <View style={[
+        styles.numBadge,
+        { backgroundColor: unlocked ? theme.primary : theme.muted },
+      ]}>
+        {unlocked ? (
+          <Text style={styles.numText}>{topic.orderIndex + 1}</Text>
+        ) : (
+          <Ionicons name="lock-closed" size={11} color={theme.textSecondary} />
+        )}
+      </View>
+
+      {/* Title + summary */}
+      <View style={{ flex: 1 }}>
+        <Text
+          style={[styles.rowTitle, { color: unlocked ? theme.text : theme.textSecondary }]}>
+          {topic.title}
+        </Text>
+        {topic.summary ? (
+          <Text
+            style={[styles.rowSub, { color: theme.textSecondary }]}
+            numberOfLines={1}>
             {topic.summary}
           </Text>
-        </View>
+        ) : null}
       </View>
+
+      {/* Stars */}
       <View style={styles.stars}>
         {[1, 2, 3].map((s) => (
           <Ionicons
             key={s}
             name={s <= stars ? 'star' : 'star-outline'}
-            size={16}
-            color={s <= stars ? theme.accent : theme.textSecondary}
+            size={13}
+            color={s <= stars ? theme.accent : theme.border}
           />
         ))}
       </View>
-    </Card>
+
+      {unlocked && (
+        <Ionicons name="chevron-forward" size={14} color={theme.border} style={{ marginLeft: 4 }} />
+      )}
+    </Pressable>
   );
 }
 
+// ── Styles ─────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  intro: { fontSize: 13, lineHeight: 18 },
-  stage: { fontSize: 13, fontWeight: '800' },
-  topicHeader: { flexDirection: 'row', gap: Spacing.two, alignItems: 'flex-start' },
-  numBadge: { width: 30, height: 30, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center' },
-  numText: { color: '#fff', fontWeight: '800', fontSize: 14 },
-  topicTitle: { fontSize: 16, fontWeight: '700' },
-  topicSummary: { fontSize: 13, marginTop: 2 },
-  stars: { flexDirection: 'row', gap: 4, marginTop: Spacing.two, marginLeft: 38 },
-  trainerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  trainerIcon: { width: 34, height: 34, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center' },
+  content: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.six },
+
+  // Stage sections
+  stageSection: { marginBottom: Spacing.four },
+  stageHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    marginBottom: Spacing.two,
+  },
+  stageLabel: {
+    fontFamily: Fonts.serif,
+    fontSize: 15,
+    letterSpacing: 0.3,
+  },
+  stageLine: { flex: 1, height: StyleSheet.hairlineWidth },
+  stageCaption: { fontSize: 13, lineHeight: 18, marginBottom: Spacing.two },
+
+  // Row container (bordered group)
+  topicList: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.md,
+    overflow: 'hidden',
+  },
+
+  // Individual row
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: 13,
+    paddingHorizontal: Spacing.three,
+    backgroundColor: 'transparent',
+  },
+
+  // Num badge
+  numBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: Radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  numText: { color: '#fff', fontWeight: '800', fontSize: 12 },
+
+  // Row text
+  rowTitle: { fontSize: 15, fontWeight: '700' },
+  rowSub: { fontSize: 12, marginTop: 1 },
+
+  // Stars
+  stars: { flexDirection: 'row', gap: 3 },
+
+  // Formentrainer row icon
+  rowIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: Radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
 });

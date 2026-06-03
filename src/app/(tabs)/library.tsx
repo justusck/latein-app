@@ -5,13 +5,10 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { StatsHeader } from '@/components/stats-header';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { ProgressBar } from '@/components/ui/progress';
+import { PageHeader } from '@/components/ui/page-header';
 import { Screen } from '@/components/ui/screen';
-import { Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { getBooksWithCoverage, type BookCoverage } from '@/lib/knowledge';
 import { deleteBook, importBook } from '@/lib/reading';
@@ -50,86 +47,207 @@ export default function LibraryScreen() {
       {
         text: 'Löschen',
         style: 'destructive',
-        onPress: () => {
-          deleteBook(id);
-          refresh();
-        },
+        onPress: () => { deleteBook(id); refresh(); },
       },
     ]);
   };
 
+  const unlocked = items.filter((i) => i.unlocked).length;
+  const total = items.length;
+
+  const headerRight = (
+    <View style={styles.headerActions}>
+      <Pressable
+        onPress={upload}
+        disabled={busy}
+        hitSlop={8}
+        style={({ pressed }) => [styles.iconBtn, { borderColor: theme.border, opacity: pressed ? 0.7 : 1 }]}>
+        <Ionicons name={busy ? 'hourglass-outline' : 'add'} size={18} color={theme.primary} />
+      </Pressable>
+      <Pressable
+        onPress={() => router.push('/settings')}
+        hitSlop={8}
+        style={({ pressed }) => [styles.iconBtn, { borderColor: theme.border, opacity: pressed ? 0.7 : 1 }]}>
+        <Ionicons name="settings-outline" size={18} color={theme.textSecondary} />
+      </Pressable>
+    </View>
+  );
+
   return (
-    <Screen scroll>
-      <ThemedText type="title" style={{ marginBottom: Spacing.two }}>Lesen</ThemedText>
-      <StatsHeader />
-      <Text style={[styles.intro, { color: theme.textSecondary }]}>
-        Texte werden freigeschaltet, sobald du ≥ 90 % ihres Wortschatzes beherrschst. Lade eigene
-        Texte hoch — sie werden automatisch mit deinem Wissen abgeglichen.
-      </Text>
+    <Screen scroll padded={false}>
+      <PageHeader title="Bibliotheca" right={headerRight} />
+      <View style={styles.content}>
 
-      <Button title={busy ? 'Lade…' : 'Eigenen Text hochladen (.txt)'} onPress={upload} loading={busy} />
+      {/* ── Coverage summary ── */}
+      {total > 0 && (
+        <Text style={[styles.summary, { color: theme.textSecondary }]}>
+          {unlocked}/{total} {unlocked === 1 ? 'Text' : 'Texte'} freigeschaltet
+          {' · '}Wortschatz ≥ 90 % nötig
+        </Text>
+      )}
 
-      <View style={{ gap: Spacing.two, marginTop: Spacing.three }}>
-        {items.map((it) => (
-          <BookRow key={it.book.id} item={it} theme={theme} onDelete={confirmDelete} />
-        ))}
+      {/* ── Book list ── */}
+      {total === 0 ? (
+        <View style={styles.emptyState}>
+          <Ionicons name="book-outline" size={36} color={theme.border} />
+          <Text style={[styles.emptyTitle, { color: theme.text }]}>Keine Texte</Text>
+          <Text style={[styles.emptySub, { color: theme.textSecondary }]}>
+            Tippe das + oben, um einen eigenen Text hochzuladen.
+          </Text>
+        </View>
+      ) : (
+        <View style={[styles.bookList, { borderColor: theme.border }]}>
+          {items.map((it, i) => (
+            <BookRow
+              key={it.book.id}
+              item={it}
+              theme={theme}
+              last={i === items.length - 1}
+              onDelete={confirmDelete}
+            />
+          ))}
+        </View>
+      )}
+
+      {total > 0 && (
+        <View style={{ marginTop: Spacing.three }}>
+          <Button
+            title={busy ? 'Lade…' : 'Text hochladen (.txt)'}
+            variant="ghost"
+            loading={busy}
+            onPress={upload}
+          />
+        </View>
+      )}
       </View>
     </Screen>
   );
 }
 
+// ── BookRow ────────────────────────────────────────────────────────────────
+
 function BookRow({
   item,
   theme,
+  last,
   onDelete,
 }: {
   item: BookCoverage;
   theme: ReturnType<typeof useTheme>;
+  last: boolean;
   onDelete: (id: string, title: string) => void;
 }) {
   const { book, ratio, unlocked } = item;
   const pct = Math.round(ratio * 100);
+  const fillColor = unlocked ? theme.success : theme.primary;
+
   return (
-    <Card onPress={() => router.push(`/reader/${book.id}`)}>
-      <View style={styles.bookHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.bookTitle, { color: theme.text }]}>{book.title}</Text>
-          {book.author ? (
-            <Text style={[styles.bookAuthor, { color: theme.textSecondary }]}>{book.author}</Text>
-          ) : null}
+    <Pressable
+      onPress={() => router.push(`/reader/${book.id}`)}
+      style={({ pressed }) => [
+        styles.bookRow,
+        !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+        pressed && { opacity: 0.75 },
+      ]}>
+
+      {/* Lock / unlock icon */}
+      <Ionicons
+        name={unlocked ? 'lock-open-outline' : 'lock-closed-outline'}
+        size={16}
+        color={unlocked ? theme.success : theme.textSecondary}
+        style={{ flexShrink: 0, marginTop: 2 }}
+      />
+
+      {/* Text info */}
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.bookTitle, { color: theme.text }]} numberOfLines={1}>
+          {book.title}
+        </Text>
+        {book.author ? (
+          <Text style={[styles.bookAuthor, { color: theme.textSecondary }]} numberOfLines={1}>
+            {book.author}
+          </Text>
+        ) : null}
+
+        {/* Coverage band */}
+        <View style={styles.coverageRow}>
+          <View style={[styles.coverageTrack, { backgroundColor: theme.muted }]}>
+            <View style={[styles.coverageFill, { width: `${pct}%`, backgroundColor: fillColor }]} />
+          </View>
+          <Text style={[styles.coveragePct, { color: unlocked ? theme.success : theme.textSecondary }]}>
+            {pct}%
+          </Text>
         </View>
+      </View>
+
+      {/* Level badge + delete */}
+      <View style={styles.bookRight}>
         <View style={[styles.levelBadge, { backgroundColor: theme.muted }]}>
           <Text style={[styles.levelText, { color: theme.text }]}>{book.level}</Text>
         </View>
         {!book.builtin && (
           <Pressable onPress={() => onDelete(book.id, book.title)} hitSlop={8} style={{ marginLeft: 8 }}>
-            <Ionicons name="trash-outline" size={18} color={theme.textSecondary} />
+            <Ionicons name="trash-outline" size={16} color={theme.textSecondary} />
           </Pressable>
         )}
       </View>
-
-      <View style={styles.coverageRow}>
-        <Ionicons
-          name={unlocked ? 'lock-open' : 'lock-closed'}
-          size={14}
-          color={unlocked ? theme.success : theme.textSecondary}
-        />
-        <Text style={[styles.coverageText, { color: unlocked ? theme.success : theme.textSecondary }]}>
-          {pct}% lesbar{unlocked ? ' · freigeschaltet' : ''}
-        </Text>
-      </View>
-      <ProgressBar progress={ratio} color={unlocked ? theme.success : theme.primary} height={8} />
-    </Card>
+    </Pressable>
   );
 }
 
+// ── Styles ─────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  intro: { fontSize: 13, lineHeight: 18, marginBottom: Spacing.three },
-  bookHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginBottom: Spacing.two },
-  bookTitle: { fontSize: 17, fontWeight: '800' },
-  bookAuthor: { fontSize: 13, marginTop: 1 },
-  levelBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: Radius.sm },
-  levelText: { fontSize: 12, fontWeight: '800' },
-  coverageRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
-  coverageText: { fontSize: 12, fontWeight: '700' },
+  content: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.six },
+  headerActions: { flexDirection: 'row', gap: Spacing.two },
+  iconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: Radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  summary: { fontSize: 13, lineHeight: 18, marginBottom: Spacing.three },
+
+  // Book list container
+  bookList: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.md,
+    overflow: 'hidden',
+  },
+  bookRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+    paddingVertical: 13,
+    paddingHorizontal: Spacing.three,
+  },
+
+  // Book info
+  bookTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  bookAuthor: { fontSize: 12, marginBottom: 5 },
+  coverageRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  coverageTrack: { flex: 1, height: 2, borderRadius: 1, overflow: 'hidden' },
+  coverageFill: { height: 2, borderRadius: 1 },
+  coveragePct: { fontSize: 11, fontWeight: '700', minWidth: 28, textAlign: 'right' },
+
+  // Right side
+  bookRight: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
+  levelBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.sm,
+  },
+  levelText: { fontSize: 11, fontWeight: '800' },
+
+  // Empty state
+  emptyState: {
+    paddingVertical: Spacing.six,
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  emptyTitle: { fontSize: 17, fontWeight: '700' },
+  emptySub: { fontSize: 13, textAlign: 'center', lineHeight: 18 },
 });

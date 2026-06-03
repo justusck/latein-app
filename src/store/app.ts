@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 
+import { type UiLang } from '@/constants/strings';
 import { dayKey, isYesterday, levelForXp } from '@/lib/gamification';
 import { kvGet, kvGetNum, kvSet } from '@/lib/kv';
 
 export type Pronunciation = 'classical' | 'ecclesiastical';
+export type { UiLang };
 
 const COINS_PER_LEVEL = 5;
 
@@ -17,6 +19,7 @@ type AppState = {
   dailyGoalXp: number;
   retention: number;
   pronunciation: Pronunciation;
+  uiLang: UiLang;
 
   hydrate: () => void;
   awardXp: (n: number) => { leveledUp: boolean; newLevel: number };
@@ -26,6 +29,7 @@ type AppState = {
   setRetention: (r: number) => void;
   setPronunciation: (p: Pronunciation) => void;
   setDailyGoalNew: (n: number) => void;
+  setUiLang: (l: UiLang) => void;
 };
 
 export const useApp = create<AppState>((set, get) => ({
@@ -38,6 +42,7 @@ export const useApp = create<AppState>((set, get) => ({
   dailyGoalXp: 60,
   retention: 0.9,
   pronunciation: 'classical',
+  uiLang: 'de',
 
   hydrate: () => {
     set({
@@ -49,6 +54,7 @@ export const useApp = create<AppState>((set, get) => ({
       dailyGoalXp: kvGetNum('dailyGoalXp', 60),
       retention: kvGetNum('retention', 0.9),
       pronunciation: (kvGet('pronunciation') as Pronunciation) ?? 'classical',
+      uiLang: (kvGet('uiLang') as UiLang) ?? 'de',
       hydrated: true,
     });
   },
@@ -96,5 +102,10 @@ export const useApp = create<AppState>((set, get) => ({
     const dailyGoalNew = Math.min(40, Math.max(0, Math.round(n)));
     kvSet('dailyGoalNew', String(dailyGoalNew));
     set({ dailyGoalNew });
+  },
+
+  setUiLang: (l) => {
+    kvSet('uiLang', l);
+    set({ uiLang: l });
   },
 }));

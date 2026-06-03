@@ -21,22 +21,26 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Vokabeln',
-          tabBarIcon: ({ color, size }) => <Ionicons name="albums" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'bookmark' : 'bookmark-outline'} size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="grammar"
         options={{
           title: 'Grammatik',
-          tabBarIcon: ({ color, size }) => <Ionicons name="git-network" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'school' : 'school-outline'} size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="ai"
         options={{
-          title: 'Anwendung',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubbles" size={size} color={color} />
+          title: 'Magister',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'mic' : 'mic-outline'} size={size} color={color} />
           ),
         }}
       />
@@ -44,7 +48,9 @@ export default function TabsLayout() {
         name="library"
         options={{
           title: 'Lesen',
-          tabBarIcon: ({ color, size }) => <Ionicons name="library" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'book' : 'book-outline'} size={size} color={color} />
+          ),
         }}
       />
     </Tabs>

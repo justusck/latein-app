@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "version": "0.1.0",
   "dependencies": {
+    "@expo-google-fonts/libre-caslon-text": "^0.4.0",
     "@expo/vector-icons": "^15.0.2",
     "drizzle-orm": "^0.45.2",
     "expo": "^54.0.35",

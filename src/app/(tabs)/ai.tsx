@@ -13,11 +13,10 @@ import {
   View,
 } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { PageHeader } from '@/components/ui/page-header';
 import { Screen } from '@/components/ui/screen';
-import { Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { AI_MODES, type AiMode, type ChatMessage, chat, latinPart } from '@/lib/ai';
 import { appendMessage, loadOrStart, startConversation, type Conversation } from '@/lib/ai/conversations';
@@ -91,46 +90,54 @@ export default function AiScreen() {
     setError('');
   };
 
-  // ── No API key ──
+  // ── No API key: empty state ──────────────────────────────────────────────
   if (checkedKey && !apiKey) {
     return (
-      <Screen scroll>
-        <ThemedText type="title">Anwendung</ThemedText>
-        <Card style={{ gap: Spacing.three, marginTop: Spacing.two }}>
-          <Ionicons name="key-outline" size={32} color={theme.primary} />
-          <ThemedText type="subtitle">AI-Key benötigt</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+      <Screen scroll padded={false}>
+        <PageHeader title="Magister" />
+
+        <View style={styles.emptyState}>
+          <View style={[styles.emptyIcon, { backgroundColor: theme.muted }]}>
+            <Ionicons name="key-outline" size={28} color={theme.primary} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: theme.text }]}>API-Key benötigt</Text>
+          <Text style={[styles.emptySub, { color: theme.textSecondary }]}>
             Hinterlege deinen Anthropic API-Key in den Einstellungen, um mit dem Magister auf Latein
             zu schreiben und zu sprechen.
-          </ThemedText>
+          </Text>
           <Button title="Zu den Einstellungen" onPress={() => router.push('/settings')} />
-        </Card>
+        </View>
       </Screen>
     );
   }
 
+  // ── Chat UI ──────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={90}>
       <Screen padded={false}>
-        <View style={styles.header}>
-          <ThemedText type="title">Magister</ThemedText>
-          <View style={styles.headerActions}>
-            <Pressable onPress={newChat} hitSlop={8}>
-              <Ionicons name="create-outline" size={22} color={theme.textSecondary} />
-            </Pressable>
-            <Pressable onPress={() => router.push('/settings')} hitSlop={8}>
-              <Ionicons name="settings-outline" size={22} color={theme.textSecondary} />
-            </Pressable>
-          </View>
-        </View>
 
-        <Text style={[styles.knowledge, { color: theme.textSecondary }]}>
-          Magister kennt deinen Stand: {knowledge.words} Wörter · {knowledge.grammar} Grammatik-Themen
-        </Text>
+        {/* Header */}
+        <PageHeader
+          title="Magister"
+          right={
+            <View style={styles.headerActions}>
+              <Text style={[styles.knowledgePill, { backgroundColor: theme.muted, color: theme.textSecondary }]}>
+                {knowledge.words} W · {knowledge.grammar} G
+              </Text>
+              <Pressable onPress={newChat} hitSlop={8}>
+                <Ionicons name="create-outline" size={20} color={theme.textSecondary} />
+              </Pressable>
+              <Pressable onPress={() => router.push('/settings')} hitSlop={8}>
+                <Ionicons name="settings-outline" size={20} color={theme.textSecondary} />
+              </Pressable>
+            </View>
+          }
+        />
 
+        {/* Mode selector */}
         <View style={[styles.modes, { backgroundColor: theme.muted }]}>
           {AI_MODES.map((m) => {
             const active = m.id === mode;
@@ -139,17 +146,28 @@ export default function AiScreen() {
                 key={m.id}
                 onPress={() => setMode(m.id)}
                 style={[styles.modeBtn, active && { backgroundColor: theme.primary }]}>
-                <Text style={[styles.modeText, { color: active ? '#fff' : theme.text }]}>{m.label}</Text>
+                <Text style={[styles.modeText, { color: active ? '#fff' : theme.textSecondary }]}>
+                  {m.label}
+                </Text>
               </Pressable>
             );
           })}
         </View>
 
+        {/* Messages */}
         <ScrollView
           ref={scrollRef}
           style={styles.flex}
           contentContainerStyle={styles.messages}
           keyboardShouldPersistTaps="handled">
+          {conv?.messages.length === 0 && !sending && (
+            <View style={styles.conversationEmpty}>
+              <Ionicons name="mic-outline" size={24} color={theme.border} />
+              <Text style={[styles.conversationEmptyText, { color: theme.textSecondary }]}>
+                Scrībe Latīnē — der Magister antwortet.
+              </Text>
+            </View>
+          )}
           {conv?.messages.map((m, i) => (
             <Bubble
               key={i}
@@ -159,35 +177,47 @@ export default function AiScreen() {
             />
           ))}
           {sending && (
-            <View style={[styles.bubble, styles.assistant, { backgroundColor: theme.card }]}>
-              <ActivityIndicator color={theme.primary} />
+            <View style={[styles.bubble, styles.assistantBubble, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <ActivityIndicator color={theme.primary} size="small" />
             </View>
           )}
           {error ? (
-            <Text style={[styles.error, { color: theme.danger }]}>{error}</Text>
+            <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text>
           ) : null}
         </ScrollView>
 
+        {/* Input bar */}
         <View style={[styles.inputBar, { borderTopColor: theme.border, backgroundColor: theme.background }]}>
           <TextInput
             value={input}
             onChangeText={setInput}
+            onSubmitEditing={send}
             placeholder="Scrībe Latīnē…"
             placeholderTextColor={theme.textSecondary}
             multiline
+            blurOnSubmit={false}
             style={[styles.input, { color: theme.text, backgroundColor: theme.muted }]}
           />
           <Pressable
             onPress={send}
             disabled={!input.trim() || sending}
-            style={[styles.sendBtn, { backgroundColor: theme.primary, opacity: !input.trim() || sending ? 0.5 : 1 }]}>
-            <Ionicons name="send" size={20} color="#fff" />
+            style={({ pressed }) => [
+              styles.sendBtn,
+              {
+                backgroundColor: theme.primary,
+                opacity: !input.trim() || sending ? 0.4 : pressed ? 0.85 : 1,
+              },
+            ]}>
+            <Ionicons name="arrow-up" size={20} color="#fff" />
           </Pressable>
         </View>
+
       </Screen>
     </KeyboardAvoidingView>
   );
 }
+
+// ── Bubble ─────────────────────────────────────────────────────────────────
 
 function Bubble({
   message,
@@ -199,65 +229,94 @@ function Bubble({
   onSpeak: () => void;
 }) {
   const isUser = message.role === 'user';
+
   if (isUser) {
     return (
-      <View style={[styles.bubble, styles.user, { backgroundColor: theme.primary, borderColor: theme.border }]}>
+      <View style={[styles.bubble, styles.userBubble, { backgroundColor: theme.primary }]}>
         <Text style={[styles.bubbleText, { color: '#fff' }]}>{message.content}</Text>
       </View>
     );
   }
-  // Tapping anywhere on the assistant bubble reads the Latin aloud.
+
   return (
     <Pressable
       onPress={onSpeak}
       style={({ pressed }) => [
         styles.bubble,
-        styles.assistant,
+        styles.assistantBubble,
         { backgroundColor: theme.card, borderColor: theme.border, opacity: pressed ? 0.85 : 1 },
       ]}>
       <Text style={[styles.bubbleText, { color: theme.text }]}>{message.content}</Text>
       <View style={styles.speakRow}>
-        <Ionicons name="volume-medium" size={16} color={theme.primary} />
+        <Ionicons name="mic-outline" size={13} color={theme.primary} />
         <Text style={[styles.speakHint, { color: theme.primary }]}>Antippen zum Anhören</Text>
       </View>
     </Pressable>
   );
 }
 
+// ── Styles ─────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.two,
+
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  knowledgePill: {
+    fontSize: 11,
+    fontWeight: '600',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.pill,
   },
-  headerActions: { flexDirection: 'row', gap: Spacing.three },
-  knowledge: { fontSize: 12, paddingHorizontal: Spacing.three, marginTop: 2 },
+
+  // Mode selector
   modes: {
     flexDirection: 'row',
-    margin: Spacing.three,
-    marginBottom: Spacing.two,
-    borderRadius: Radius.md,
-    padding: 4,
-    gap: 4,
+    marginHorizontal: Spacing.three,
+    marginTop: Spacing.two,
+    marginBottom: Spacing.one,
+    borderRadius: Radius.pill,
+    padding: 3,
+    gap: 3,
   },
-  modeBtn: { flex: 1, paddingVertical: Spacing.two, borderRadius: Radius.sm, alignItems: 'center' },
-  modeText: { fontWeight: '700', fontSize: 13 },
+  modeBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+  },
+  modeText: { fontWeight: '700', fontSize: 12 },
+
+  // Messages
   messages: { padding: Spacing.three, gap: Spacing.two, paddingBottom: Spacing.four },
+  conversationEmpty: {
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.five,
+    opacity: 0.6,
+  },
+  conversationEmptyText: { fontSize: 13, fontStyle: 'italic' },
+
+  // Bubbles
   bubble: {
-    maxWidth: '88%',
+    maxWidth: '86%',
     padding: Spacing.three,
     borderRadius: Radius.lg,
+  },
+  userBubble: { alignSelf: 'flex-end', borderBottomRightRadius: Radius.sm },
+  assistantBubble: {
+    alignSelf: 'flex-start',
+    borderBottomLeftRadius: Radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  user: { alignSelf: 'flex-end', borderBottomRightRadius: Radius.sm },
-  assistant: { alignSelf: 'flex-start', borderBottomLeftRadius: Radius.sm },
-  bubbleText: { fontSize: 16, lineHeight: 23 },
-  speakRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: Spacing.two },
-  speakHint: { fontSize: 12, fontWeight: '700' },
-  error: { fontSize: 13, padding: Spacing.two, textAlign: 'center' },
+  bubbleText: { fontSize: 16, lineHeight: 24 },
+  speakRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: Spacing.two },
+  speakHint: { fontSize: 11, fontWeight: '700' },
+
+  // Error
+  errorText: { fontSize: 13, textAlign: 'center', padding: Spacing.two },
+
+  // Input bar
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -274,5 +333,27 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     fontSize: 16,
   },
-  sendBtn: { width: 44, height: 44, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center' },
+  sendBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Empty states
+  emptyState: {
+    paddingTop: Spacing.five,
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: Radius.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: { fontSize: 20, fontWeight: '800' },
+  emptySub: { fontSize: 14, textAlign: 'center', lineHeight: 20, maxWidth: 280 },
 });

@@ -1,14 +1,16 @@
-import * as Speech from 'expo-speech';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import { File, Paths } from 'expo-file-system';
+import { Platform } from 'react-native';
 
+import { getElevenLabsKey } from '@/lib/secure';
 import type { Pronunciation } from '@/store/app';
 
-/**
- * Latin has no native system TTS voice. We approximate:
- *  - ecclesiastical ≈ Italian voice (it-IT), text mostly as-is.
- *  - classical ≈ apply a light phonetic transform (c→k, v→w, ae→ai, …) and
- *    read with an Italian/Spanish voice for clean vowels.
- * This is a documented approximation, not a true Latin synthesiser.
- */
+// ElevenLabs "Adam" — deep, clear, works well for Latin
+const VOICE_ID = 'pNInz6obpgDQGcFmaJgB';
+const MODEL = 'eleven_multilingual_v2';
+
+let currentPlayer: ReturnType<typeof createAudioPlayer> | null = null;
+
 function stripMacrons(s: string): string {
   return s
     .replace(/[āăâ]/g, 'a')
@@ -34,22 +36,51 @@ function classicalPhonetic(s: string): string {
     .replace(/gn/gi, 'ngn');
 }
 
-export function speakLatin(text: string, pronunciation: Pronunciation): void {
+export async function speakLatin(text: string, pronunciation: Pronunciation): Promise<void> {
+  const key = await getElevenLabsKey();
+  if (!key) return;
+
   const body = (pronunciation === 'classical' ? classicalPhonetic(text) : stripMacrons(text)).trim();
   if (!body) return;
-  Speech.stop();
-  // Prefer an Italian voice for clean Latin vowels; if it isn't installed on
-  // the device, retry once with the system default so there is always audio.
-  Speech.speak(body, {
-    language: 'it-IT',
-    rate: pronunciation === 'classical' ? 0.92 : 0.95,
-    pitch: 1.0,
-    onError: () => {
-      Speech.speak(body, { rate: 0.92, pitch: 1.0 });
+
+  if (currentPlayer) {
+    currentPlayer.pause();
+    currentPlayer.remove();
+    currentPlayer = null;
+  }
+
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
+    method: 'POST',
+    headers: {
+      'xi-api-key': key,
+      'Content-Type': 'application/json',
+      Accept: 'audio/mpeg',
     },
+    body: JSON.stringify({
+      text: body,
+      model_id: MODEL,
+      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+    }),
   });
+
+  if (!res.ok) throw new Error(`ElevenLabs TTS error: ${res.status}`);
+
+  const buffer = await res.arrayBuffer();
+  const file = new File(Paths.cache, 'latein_tts.mp3');
+  file.write(new Uint8Array(buffer));
+
+  if (Platform.OS === 'ios') {
+    await setAudioModeAsync({ playsInSilentMode: true });
+  }
+
+  currentPlayer = createAudioPlayer({ uri: file.uri });
+  currentPlayer.play();
 }
 
 export function stopSpeaking(): void {
-  Speech.stop();
+  if (currentPlayer) {
+    currentPlayer.pause();
+    currentPlayer.remove();
+    currentPlayer = null;
+  }
 }

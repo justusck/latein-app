@@ -1,4 +1,9 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import {
+  LibreCaslonText_400Regular,
+  LibreCaslonText_700Bold,
+  useFonts,
+} from '@expo-google-fonts/libre-caslon-text';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -14,6 +19,7 @@ export default function RootLayout() {
   const scheme = useColorScheme() ?? 'light';
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState<string>('');
+  const [fontsLoaded] = useFonts({ LibreCaslonText_400Regular, LibreCaslonText_700Bold });
 
   useEffect(() => {
     try {
@@ -29,7 +35,7 @@ export default function RootLayout() {
 
   const theme = Colors[scheme === 'dark' ? 'dark' : 'light'];
 
-  if (status !== 'ready') {
+  if (status !== 'ready' || !fontsLoaded) {
     return (
       <View style={[styles.center, { backgroundColor: theme.background }]}>
         {status === 'loading' ? (

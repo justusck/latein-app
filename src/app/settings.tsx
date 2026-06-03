@@ -6,23 +6,27 @@ import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { getApiKey, setApiKey } from '@/lib/secure';
-import { useApp, type Pronunciation } from '@/store/app';
+import { getApiKey, setApiKey, getElevenLabsKey, setElevenLabsKey } from '@/lib/secure';
+import { useStrings } from '@/hooks/use-strings';
+import { useApp, type Pronunciation, type UiLang } from '@/store/app';
 
 export default function SettingsScreen() {
   const theme = useTheme();
-  const { pronunciation, setPronunciation, dailyGoalNew, setDailyGoalNew, retention, setRetention } =
+  const t = useStrings();
+  const { pronunciation, setPronunciation, dailyGoalNew, setDailyGoalNew, retention, setRetention, uiLang, setUiLang } =
     useApp();
 
   const [apiKey, setApiKeyState] = useState('');
   const [savedKey, setSavedKey] = useState(false);
+  const [elevenKey, setElevenKeyState] = useState('');
+  const [savedElevenKey, setSavedElevenKey] = useState(false);
 
   useEffect(() => {
     getApiKey().then((k) => {
-      if (k) {
-        setApiKeyState(k);
-        setSavedKey(true);
-      }
+      if (k) { setApiKeyState(k); setSavedKey(true); }
+    });
+    getElevenLabsKey().then((k) => {
+      if (k) { setElevenKeyState(k); setSavedElevenKey(true); }
     });
   }, []);
 
@@ -32,8 +36,27 @@ export default function SettingsScreen() {
     setSavedKey(value.trim().length > 0);
   };
 
+  const saveElevenKey = async (value: string) => {
+    setElevenKeyState(value);
+    await setElevenLabsKey(value);
+    setSavedElevenKey(value.trim().length > 0);
+  };
+
   return (
     <Screen scroll>
+      <SectionTitle theme={theme}>{t.settingsLangLabel}</SectionTitle>
+      <Card>
+        <Segmented<UiLang>
+          value={uiLang}
+          onChange={setUiLang}
+          options={[
+            { value: 'de', label: 'Deutsch' },
+            { value: 'la', label: 'Latina' },
+          ]}
+          theme={theme}
+        />
+      </Card>
+
       <SectionTitle theme={theme}>Anwendung (AI)</SectionTitle>
       <Card style={{ gap: Spacing.two }}>
         <Text style={[styles.label, { color: theme.text }]}>Anthropic API-Key</Text>
@@ -52,6 +75,30 @@ export default function SettingsScreen() {
           style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
         />
         {savedKey && (
+          <View style={styles.savedRow}>
+            <Ionicons name="checkmark-circle" size={16} color={theme.success} />
+            <Text style={[styles.help, { color: theme.success }]}>Key gespeichert</Text>
+          </View>
+        )}
+      </Card>
+
+      <SectionTitle theme={theme}>Text-to-Speech (ElevenLabs)</SectionTitle>
+      <Card style={{ gap: Spacing.two }}>
+        <Text style={[styles.label, { color: theme.text }]}>ElevenLabs API-Key</Text>
+        <Text style={[styles.help, { color: theme.textSecondary }]}>
+          Wird sicher im Schlüsselbund gespeichert. Nötig für KI-Sprachausgabe im Magister und Reader.
+        </Text>
+        <TextInput
+          value={elevenKey}
+          onChangeText={saveElevenKey}
+          placeholder="sk_..."
+          placeholderTextColor={theme.textSecondary}
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+        />
+        {savedElevenKey && (
           <View style={styles.savedRow}>
             <Ionicons name="checkmark-circle" size={16} color={theme.success} />
             <Text style={[styles.help, { color: theme.success }]}>Key gespeichert</Text>
