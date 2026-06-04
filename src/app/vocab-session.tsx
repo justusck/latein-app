@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import {
   answerCard,
   getDistractorGlosses,
   getDueCards,
+  getFreeReviewCards,
   getVocabStats,
   introduceNewCards,
   type StudyCard,
@@ -34,7 +35,14 @@ function shuffle<T>(arr: T[]): T[] {
 
 export default function VocabSession() {
   const theme = useTheme();
+  const nav = useNavigation();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const isFree = mode === 'free';
   const { retention, pronunciation, dailyGoalNew, awardXp, registerActivity } = useApp();
+
+  useLayoutEffect(() => {
+    nav.setOptions({ title: isFree ? 'Frei üben' : 'Vokabeltraining' });
+  }, [nav, isFree]);
 
   const [queue, setQueue] = useState<StudyCard[]>([]);
   const [idx, setIdx] = useState(0);
@@ -45,9 +53,13 @@ export default function VocabSession() {
   const activityMarked = useRef(false);
 
   useEffect(() => {
-    const stats = getVocabStats(dailyGoalNew);
-    introduceNewCards(stats.newRemainingToday);
-    setQueue(getDueCards(40));
+    if (isFree) {
+      setQueue(getFreeReviewCards(40));
+    } else {
+      const stats = getVocabStats(dailyGoalNew);
+      introduceNewCards(stats.newRemainingToday);
+      setQueue(getDueCards(40));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -66,7 +78,14 @@ export default function VocabSession() {
     return (
       <Screen>
         <View style={styles.centerFill}>
-          <Text style={[styles.big, { color: theme.text }]}>Nichts fällig 🎉</Text>
+          <Text style={[styles.big, { color: theme.text }]}>
+            {isFree ? 'Keine Lernkarten vorhanden' : 'Nichts fällig 🎉'}
+          </Text>
+          {isFree && (
+            <Text style={[styles.emptyHint, { color: theme.textSecondary }]}>
+              Lerne zuerst ein paar Vokabeln über "Lernen starten", dann kannst du hier frei üben.
+            </Text>
+          )}
           <Button title="Zurück" onPress={() => router.back()} fullWidth={false} />
         </View>
       </Screen>
@@ -78,14 +97,30 @@ export default function VocabSession() {
     return (
       <Screen>
         <View style={styles.centerFill}>
-          <Ionicons name="trophy" size={64} color={theme.accent} />
-          <Text style={[styles.big, { color: theme.text }]}>Session geschafft!</Text>
+          <Ionicons name={isFree ? 'flash' : 'trophy'} size={64} color={theme.accent} />
+          <Text style={[styles.big, { color: theme.text }]}>
+            {isFree ? 'Runde geschafft!' : 'Session geschafft!'}
+          </Text>
           <Card style={{ width: '100%', gap: Spacing.three }}>
             <SummaryRow label="Karten" value={`${total}`} theme={theme} />
             <SummaryRow label="Trefferquote" value={`${accuracy}%`} theme={theme} />
             <SummaryRow label="XP erhalten" value={`+${sessionXp}`} theme={theme} accent />
           </Card>
-          <Button title="Fertig" onPress={() => router.back()} />
+          {isFree && (
+            <Button
+              title="Noch eine Runde"
+              onPress={() => {
+                setQueue(getFreeReviewCards(40));
+                setIdx(0);
+                setRevealed(false);
+                setPicked(null);
+                setSessionXp(0);
+                setCorrect(0);
+                activityMarked.current = false;
+              }}
+            />
+          )}
+          <Button title="Fertig" onPress={() => router.back()} variant={isFree ? 'ghost' : undefined} />
         </View>
       </Screen>
     );
@@ -236,6 +271,7 @@ function SummaryRow({
 const styles = StyleSheet.create({
   centerFill: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.three },
   big: { fontSize: 26, fontWeight: '900' },
+  emptyHint: { fontSize: 14, textAlign: 'center', paddingHorizontal: Spacing.four, lineHeight: 20 },
   progressTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   counter: { fontSize: 12, fontWeight: '700', minWidth: 44, textAlign: 'right' },
   cardArea: { flex: 1, justifyContent: 'center' },

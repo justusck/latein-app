@@ -18,6 +18,10 @@ export type StudyCard = {
   isNew: boolean;
 };
 
+export type LemmaWithStatus = Lemma & {
+  status: 'new' | 'introduced' | 'known';
+};
+
 function startOfToday(): number {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -97,6 +101,25 @@ export function getGroupProgress(): GroupProgress[] {
   }));
 }
 
+/** All lemmas in a frequency group with their FSRS status. */
+export function getLemmasByGroup(groupId: number): LemmaWithStatus[] {
+  const rows = db
+    .select()
+    .from(lemmas)
+    .leftJoin(vocabCards, eq(lemmas.id, vocabCards.lemmaId))
+    .where(eq(lemmas.freqGroup, groupId))
+    .orderBy(asc(lemmas.freqRank))
+    .all();
+  return rows.map((r) => {
+    const card = r.vocab_cards;
+    let status: LemmaWithStatus['status'] = 'new';
+    if (card) {
+      status = card.stability >= KNOWN_STABILITY_DAYS ? 'known' : 'introduced';
+    }
+    return { ...r.lemmas, status };
+  });
+}
+
 /** Create card rows for the next `n` unseen lemmas (frequency order). */
 export function introduceNewCards(n: number): number {
   if (n <= 0) return 0;
@@ -173,6 +196,33 @@ export function getDueCards(limit = 40): StudyCard[] {
     }));
 }
 
+/** Random already-introduced cards for free practice (ignores due date). */
+export function getFreeReviewCards(limit = 40): StudyCard[] {
+  return db
+    .select()
+    .from(vocabCards)
+    .innerJoin(lemmas, eq(vocabCards.lemmaId, lemmas.id))
+    .where(sql`${vocabCards.reps} > 0`)
+    .orderBy(sql`random()`)
+    .limit(limit)
+    .all()
+    .map((r) => ({
+      lemma: r.lemmas,
+      isNew: false,
+      fsrs: {
+        due: r.vocab_cards.due,
+        stability: r.vocab_cards.stability,
+        difficulty: r.vocab_cards.difficulty,
+        elapsedDays: r.vocab_cards.elapsedDays,
+        scheduledDays: r.vocab_cards.scheduledDays,
+        reps: r.vocab_cards.reps,
+        lapses: r.vocab_cards.lapses,
+        state: r.vocab_cards.state,
+        lastReview: r.vocab_cards.lastReview,
+      },
+    }));
+}
+
 /** Apply a rating: reschedule, persist, log the review. */
 export function answerCard(lemmaId: number, fsrs: FsrsFields, rating: AppRatingValue, retention: number): FsrsFields {
   const next = review(fsrs, rating, retention);
@@ -200,6 +250,66 @@ export function answerCard(lemmaId: number, fsrs: FsrsFields, rating: AppRatingV
     })
     .run();
   return next;
+}
+
+export type DayCount = { day: string; count: number };
+
+export type ProfileStats = {
+  totalReviews: number;
+  todayReviews: number;
+  accuracy: number; // 0..1
+  studyDays: number;
+  dayCounts: DayCount[]; // last 90 days, each with review count
+};
+
+export function getProfileStats(): ProfileStats {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const totalReviews = db.select({ c: count() }).from(reviews).get()!.c;
+  const todayReviews = db
+    .select({ c: count() })
+    .from(reviews)
+    .where(sql`${reviews.reviewedAt} >= ${todayStart.getTime()}`)
+    .get()!.c;
+  const goodCount = db
+    .select({ c: count() })
+    .from(reviews)
+    .where(sql`${reviews.rating} >= 3`)
+    .get()!.c;
+  const accuracy = totalReviews > 0 ? goodCount / totalReviews : 0;
+
+  // Distinct study days (all time)
+  const studyDaysRows = db
+    .select({ d: sql<string>`date(${reviews.reviewedAt} / 1000, 'unixepoch')` })
+    .from(reviews)
+    .groupBy(sql`date(${reviews.reviewedAt} / 1000, 'unixepoch')`)
+    .all();
+  const studyDays = studyDaysRows.length;
+
+  // Last 90 days with per-day review counts
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  const recentCountRows = db
+    .select({
+      d: sql<string>`date(${reviews.reviewedAt} / 1000, 'unixepoch')`,
+      c: count(),
+    })
+    .from(reviews)
+    .where(sql`${reviews.reviewedAt} >= ${ninetyDaysAgo.getTime()}`)
+    .groupBy(sql`date(${reviews.reviewedAt} / 1000, 'unixepoch')`)
+    .all();
+  const countByDay = new Map<string, number>();
+  for (const r of recentCountRows) countByDay.set(r.d, r.c);
+
+  const dayCounts: DayCount[] = [];
+  for (let i = 89; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    dayCounts.push({ day: key, count: countByDay.get(key) ?? 0 });
+  }
+  return { totalReviews, todayReviews, accuracy, studyDays, dayCounts };
 }
 
 export { AppRating };

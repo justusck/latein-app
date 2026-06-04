@@ -13,6 +13,7 @@ export function toRoman(n: number): string {
 
 export type UiStrings = {
   vocabTitle: string;
+  profileTitle: string;
   cardsToday: (n: number) => string;
   allDone: string;
   startStudying: string;
@@ -23,12 +24,17 @@ export type UiStrings = {
   portion: (n: number) => string;
   importVocab: string;
   importing: string;
-  hiddenGroups: (n: number, total: number) => string;
+  groupDetailTitle: (n: number) => string;
+  freePractice: string;
+  statusNew: string;
+  statusIntroduced: string;
+  statusKnown: string;
   settingsLangLabel: string;
 };
 
 export const DE: UiStrings = {
   vocabTitle: 'Vokabeln',
+  profileTitle: 'Profil',
   cardsToday: (n) => n === 1 ? '1 Karte heute' : `${n} Karten heute`,
   allDone: 'Alles für heute erledigt',
   startStudying: 'Lernen starten',
@@ -37,14 +43,19 @@ export const DE: UiStrings = {
   consolidated: 'gefestigt',
   customVocab: 'Eigene Vokabeln',
   portion: (n) => `Portion ${n}`,
-  importVocab: 'Vokabeln importieren (Anki/CSV)',
+  importVocab: 'Vokabeln importieren (Anki TSV)',
   importing: 'Importiere…',
-  hiddenGroups: (n, total) => `+${n} weitere Gruppen · ${total} Wörter gesamt`,
+  freePractice: 'Frei üben',
+  groupDetailTitle: (n) => `Portion ${n}`,
+  statusNew: 'Neu',
+  statusIntroduced: 'Lernend',
+  statusKnown: 'Gefestigt',
   settingsLangLabel: 'App-Sprache',
 };
 
 export const LA: UiStrings = {
   vocabTitle: 'Vocabula',
+  profileTitle: 'Profil',
   cardsToday: (n) => n === 1 ? '1 charta hodie' : `${n} chartae hodie`,
   allDone: 'Omnia hodie perfecta',
   startStudying: 'Discere',
@@ -53,9 +64,13 @@ export const LA: UiStrings = {
   consolidated: 'firmata',
   customVocab: 'Vocabula propria',
   portion: (n) => `Pars ${toRoman(n)}`,
-  importVocab: 'Vocabula importare (Anki/CSV)',
+  importVocab: 'Vocabula importare (Anki TSV)',
   importing: 'Importantur…',
-  hiddenGroups: (n, total) => `+${n} ordines alii · ${total} verba`,
+  freePractice: 'Libere exercere',
+  groupDetailTitle: (n) => `Pars ${toRoman(n)}`,
+  statusNew: 'Nova',
+  statusIntroduced: 'Discuntur',
+  statusKnown: 'Firmata',
   settingsLangLabel: 'Lingua',
 };
 

@@ -26,18 +26,12 @@ function stripHtml(s: string): string {
 }
 
 /**
- * Parse an Anki text export (TSV) or a CSV/semicolon file. First column =
- * Latin (front), second = German (back). Extra columns and `#`-comments and
- * HTML are ignored.
+ * Parse an Anki tab-separated text export. First column = Latin (front),
+ * second = German (back). Extra columns, `#`-comments, and HTML are ignored.
  */
 export function parseDeck(text: string): ParsedRow[] {
   const lines = text.split(/\r?\n/);
-  const sample = lines.find((l) => l.trim() && !l.startsWith('#')) ?? '';
-  let delim = '\t';
-  if (!sample.includes('\t')) {
-    if (sample.includes(';')) delim = ';';
-    else if (sample.includes(',')) delim = ',';
-  }
+  const delim = '\t';
   const rows: ParsedRow[] = [];
   for (const line of lines) {
     if (!line.trim() || line.startsWith('#')) continue;

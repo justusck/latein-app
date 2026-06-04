@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PageHeader } from '@/components/ui/page-header';
@@ -28,211 +28,176 @@ export default function GrammarScreen() {
     }, []),
   );
 
+  const topicStageMap = useMemo(
+    () => new Map(topics.map((t) => [t.topic.id, t.topic.stage])),
+    [topics],
+  );
+
+  const paradigmsByStage = useMemo(() => {
+    const map = new Map<string, typeof PARADIGMS>();
+    for (const p of PARADIGMS) {
+      const stage = topicStageMap.get(p.topicId) ?? 'morphology';
+      if (!map.has(stage)) map.set(stage, []);
+      map.get(stage)!.push(p);
+    }
+    return map;
+  }, [topicStageMap]);
+
   return (
     <Screen scroll padded={false}>
       <PageHeader title="Grammatik" />
       <View style={styles.content}>
+        {STAGE_ORDER.map((stage) => {
+          const stageTopics = topics.filter((t) => t.topic.stage === stage);
+          const stageParadigms = paradigmsByStage.get(stage) ?? [];
+          if (stageTopics.length === 0 && stageParadigms.length === 0) return null;
 
-      {/* ── Skill tree by stage ── */}
-      {STAGE_ORDER.map((stage) => {
-        const stageTopics = topics.filter((t) => t.topic.stage === stage);
-        if (stageTopics.length === 0) return null;
-        return (
-          <View key={stage} style={styles.stageSection}>
-            <View style={styles.stageHead}>
+          const firstUnlocked = stageTopics.find((t) => t.unlocked && !t.completed);
+
+          return (
+            <View key={stage} style={styles.stage}>
               <Text style={[styles.stageLabel, { color: theme.primary }]}>
                 {STAGE_LABELS[stage] ?? stage}
               </Text>
-              <View style={[styles.stageLine, { backgroundColor: theme.border }]} />
-            </View>
-            <View style={[styles.topicList, { borderColor: theme.border }]}>
-              {stageTopics.map((t, i) => (
-                <TopicRow
+
+              {stageTopics.map((t) => (
+                <Row
                   key={t.topic.id}
-                  item={t}
+                  title={t.topic.title}
+                  subtitle={t.topic.summary ?? undefined}
+                  unlocked={t.unlocked}
+                  completed={t.completed}
+                  highlight={t === firstUnlocked}
+                  leading={
+                    <View
+                      style={[
+                        styles.leading,
+                        {
+                          backgroundColor: t.unlocked ? theme.primary : theme.muted,
+                        },
+                      ]}>
+                      {t.unlocked ? (
+                        <Text style={styles.leadingText}>{t.topic.orderIndex + 1}</Text>
+                      ) : (
+                        <Ionicons name="lock-closed" size={11} color={theme.textSecondary} />
+                      )}
+                    </View>
+                  }
+                  onPress={t.unlocked ? () => router.push(`/grammar/${t.topic.id}`) : undefined}
                   theme={theme}
-                  last={i === stageTopics.length - 1}
+                />
+              ))}
+
+              {stageParadigms.map((p) => (
+                <Row
+                  key={`trainer-${p.id}`}
+                  title={p.title}
+                  subtitle={p.subtitle}
+                  unlocked
+                  leading={
+                    <View style={[styles.leading, { backgroundColor: theme.purple }]}>
+                      <Ionicons
+                        name={p.kind === 'noun' ? 'layers-outline' : 'flash-outline'}
+                        size={14}
+                        color="#fff"
+                      />
+                    </View>
+                  }
+                  onPress={() => router.push(`/trainer/${p.id}`)}
+                  theme={theme}
                 />
               ))}
             </View>
-          </View>
-        );
-      })}
-
-      {/* ── Formentrainer ── */}
-      <View style={styles.stageSection}>
-        <View style={styles.stageHead}>
-          <Text style={[styles.stageLabel, { color: theme.primary }]}>Formentrainer</Text>
-          <View style={[styles.stageLine, { backgroundColor: theme.border }]} />
-        </View>
-        <Text style={[styles.stageCaption, { color: theme.textSecondary }]}>
-          Fülle Deklinations- und Konjugationstabellen selbst aus.
-        </Text>
-        <View style={[styles.topicList, { borderColor: theme.border }]}>
-          {PARADIGMS.map((p, i) => (
-            <Pressable
-              key={p.id}
-              onPress={() => router.push(`/trainer/${p.id}`)}
-              style={({ pressed }) => [
-                styles.row,
-                i < PARADIGMS.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
-                pressed && { opacity: 0.7 },
-              ]}>
-              <View style={[styles.rowIcon, { backgroundColor: theme.muted }]}>
-                <Ionicons
-                  name={p.kind === 'noun' ? 'layers-outline' : 'flash-outline'}
-                  size={15}
-                  color={theme.primary}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.rowTitle, { color: theme.text }]}>{p.title}</Text>
-                <Text style={[styles.rowSub, { color: theme.textSecondary }]} numberOfLines={1}>
-                  {p.subtitle}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={15} color={theme.border} />
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
+          );
+        })}
       </View>
     </Screen>
   );
 }
 
-// ── TopicRow ───────────────────────────────────────────────────────────────
-
-function TopicRow({
-  item,
+function Row({
+  title,
+  subtitle,
+  unlocked,
+  completed,
+  highlight,
+  leading,
+  onPress,
   theme,
-  last,
 }: {
-  item: TopicWithProgress;
+  title: string;
+  subtitle?: string;
+  unlocked?: boolean;
+  completed?: boolean;
+  highlight?: boolean;
+  leading: React.ReactNode;
+  onPress?: () => void;
   theme: ReturnType<typeof useTheme>;
-  last: boolean;
 }) {
-  const { topic, stars, unlocked } = item;
-
   return (
     <Pressable
-      onPress={unlocked ? () => router.push(`/grammar/${topic.id}`) : undefined}
-      disabled={!unlocked}
+      onPress={onPress}
+      disabled={!onPress}
       style={({ pressed }) => [
         styles.row,
-        !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
-        pressed && unlocked && { opacity: 0.7 },
+        highlight && { backgroundColor: theme.primary + '0A' },
+        pressed && onPress && { opacity: 0.6 },
       ]}>
-      {/* Number or lock badge */}
-      <View style={[
-        styles.numBadge,
-        { backgroundColor: unlocked ? theme.primary : theme.muted },
-      ]}>
-        {unlocked ? (
-          <Text style={styles.numText}>{topic.orderIndex + 1}</Text>
-        ) : (
-          <Ionicons name="lock-closed" size={11} color={theme.textSecondary} />
-        )}
-      </View>
+      {leading}
 
-      {/* Title + summary */}
-      <View style={{ flex: 1 }}>
+      <View style={styles.rowBody}>
         <Text
-          style={[styles.rowTitle, { color: unlocked ? theme.text : theme.textSecondary }]}>
-          {topic.title}
+          style={[styles.rowTitle, { color: unlocked === false ? theme.textSecondary : theme.text }]}
+          numberOfLines={1}>
+          {title}
         </Text>
-        {topic.summary ? (
-          <Text
-            style={[styles.rowSub, { color: theme.textSecondary }]}
-            numberOfLines={1}>
-            {topic.summary}
+        {subtitle ? (
+          <Text style={[styles.rowSub, { color: theme.textSecondary }]} numberOfLines={1}>
+            {subtitle}
           </Text>
         ) : null}
       </View>
 
-      {/* Stars */}
-      <View style={styles.stars}>
-        {[1, 2, 3].map((s) => (
-          <Ionicons
-            key={s}
-            name={s <= stars ? 'star' : 'star-outline'}
-            size={13}
-            color={s <= stars ? theme.accent : theme.border}
-          />
-        ))}
-      </View>
-
-      {unlocked && (
-        <Ionicons name="chevron-forward" size={14} color={theme.border} style={{ marginLeft: 4 }} />
-      )}
+      {completed ? (
+        <Ionicons name="checkmark-circle" size={18} color={theme.accent} />
+      ) : unlocked === false ? null : onPress ? (
+        <Ionicons name="chevron-forward" size={14} color={theme.border} />
+      ) : null}
     </Pressable>
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   content: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.six },
 
-  // Stage sections
-  stageSection: { marginBottom: Spacing.four },
-  stageHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    marginBottom: Spacing.two,
-  },
+  stage: { marginBottom: Spacing.five },
   stageLabel: {
     fontFamily: Fonts.serif,
-    fontSize: 15,
+    fontSize: 16,
     letterSpacing: 0.3,
-  },
-  stageLine: { flex: 1, height: StyleSheet.hairlineWidth },
-  stageCaption: { fontSize: 13, lineHeight: 18, marginBottom: Spacing.two },
-
-  // Row container (bordered group)
-  topicList: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Radius.md,
-    overflow: 'hidden',
+    marginBottom: Spacing.two,
   },
 
-  // Individual row
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
-    paddingVertical: 13,
+    gap: Spacing.three,
+    paddingVertical: 12,
     paddingHorizontal: Spacing.three,
-    backgroundColor: 'transparent',
+    marginHorizontal: -Spacing.three,
+    borderRadius: Radius.md,
   },
-
-  // Num badge
-  numBadge: {
-    width: 26,
-    height: 26,
+  leading: {
+    width: 32,
+    height: 32,
     borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  numText: { color: '#fff', fontWeight: '800', fontSize: 12 },
+  leadingText: { color: '#fff', fontWeight: '800', fontSize: 13 },
 
-  // Row text
+  rowBody: { flex: 1 },
   rowTitle: { fontSize: 15, fontWeight: '700' },
   rowSub: { fontSize: 12, marginTop: 1 },
-
-  // Stars
-  stars: { flexDirection: 'row', gap: 3 },
-
-  // Formentrainer row icon
-  rowIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: Radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
 });

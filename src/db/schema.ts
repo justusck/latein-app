@@ -132,6 +132,15 @@ export const bookLemmas = sqliteTable(
   (t) => [primaryKey({ columns: [t.bookId, t.lemmaId] })],
 );
 
+// --- Latin sayings / Sprichwörter -------------------------------------------
+
+export const sayings = sqliteTable('sayings', {
+  id: integer('id').primaryKey(),
+  latin: text('latin').notNull(),
+  german: text('german').notNull(),
+  source: text('source'),
+});
+
 // --- Reviews log (for FSRS optimizer & stats) -------------------------------
 
 export const reviews = sqliteTable('reviews', {

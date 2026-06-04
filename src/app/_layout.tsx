@@ -60,9 +60,14 @@ export default function RootLayout() {
             options={{ presentation: 'modal', headerShown: true, title: 'Einstellungen' }}
           />
           <Stack.Screen
+            name="profile"
+            options={{ presentation: 'modal', headerShown: true, title: 'Profil' }}
+          />
+          <Stack.Screen
             name="vocab-session"
             options={{ headerShown: true, title: 'Vokabeltraining' }}
           />
+          <Stack.Screen name="vocab-group/[id]" options={{ headerShown: true, title: 'Vokabelgruppe' }} />
           <Stack.Screen name="grammar/[id]" options={{ headerShown: true, title: 'Lektion' }} />
           <Stack.Screen name="trainer/[id]" options={{ headerShown: true, title: 'Formentrainer' }} />
           <Stack.Screen name="reader/[id]" options={{ headerShown: true, title: 'Lesen' }} />

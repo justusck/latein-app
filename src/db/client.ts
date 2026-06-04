@@ -114,6 +114,13 @@ CREATE TABLE IF NOT EXISTS book_lemmas (
   PRIMARY KEY (book_id, lemma_id)
 );
 
+CREATE TABLE IF NOT EXISTS sayings (
+  id INTEGER PRIMARY KEY,
+  latin TEXT NOT NULL,
+  german TEXT NOT NULL,
+  source TEXT
+);
+
 CREATE TABLE IF NOT EXISTS reviews (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   card_id TEXT NOT NULL,
