@@ -4,14 +4,15 @@ import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { TriumphOverlay, type TriumphData } from '@/components/effects/triumph-overlay';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ProgressBar } from '@/components/ui/progress';
+import { AnimatedProgressBar } from '@/components/ui/animated-progress';
 import { Screen } from '@/components/ui/screen';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { AppRating, type AppRatingValue, intervalPreview } from '@/lib/fsrs';
-import { xpForReview } from '@/lib/gamification';
+import { levelForXp, rankForLevel, xpForReview } from '@/lib/gamification';
 import { speakLatin } from '@/lib/speech';
 import {
   answerCard,
@@ -38,7 +39,8 @@ export default function VocabSession() {
   const nav = useNavigation();
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const isFree = mode === 'free';
-  const { retention, pronunciation, dailyGoalNew, awardXp, registerActivity } = useApp();
+  const { retention, pronunciation, dailyGoalNew, awardXp, registerActivity, xp: totalXpBefore, streakCount } =
+    useApp();
 
   useLayoutEffect(() => {
     nav.setOptions({ title: isFree ? 'Frei üben' : 'Vokabeltraining' });
@@ -50,7 +52,10 @@ export default function VocabSession() {
   const [picked, setPicked] = useState<string | null>(null);
   const [sessionXp, setSessionXp] = useState(0);
   const [correct, setCorrect] = useState(0);
+  const [triumphVisible, setTriumphVisible] = useState(false);
+  const newCardsCount = useRef(0);
   const activityMarked = useRef(false);
+  const prevLevel = useRef(levelForXp(totalXpBefore));
 
   useEffect(() => {
     if (isFree) {
@@ -58,7 +63,9 @@ export default function VocabSession() {
     } else {
       const stats = getVocabStats(dailyGoalNew);
       introduceNewCards(stats.newRemainingToday);
-      setQueue(getDueCards(40));
+      const cards = getDueCards(40);
+      newCardsCount.current = cards.filter((c) => c.isNew).length;
+      setQueue(cards);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -66,6 +73,11 @@ export default function VocabSession() {
   const current = queue[idx];
   const total = queue.length;
   const finished = total > 0 && idx >= total;
+
+  // Show triumph overlay when session finishes
+  useEffect(() => {
+    if (finished) setTriumphVisible(true);
+  }, [finished]);
 
   // Multiple-choice options for new cards (reps === 0).
   const options = useMemo(() => {
@@ -94,35 +106,65 @@ export default function VocabSession() {
 
   if (finished) {
     const accuracy = total ? Math.round((correct / total) * 100) : 0;
+    const currentLevel = levelForXp(totalXpBefore + sessionXp);
+    const leveledUp = currentLevel.level > prevLevel.current.level;
+
+    const triumphData: TriumphData = {
+      xp: sessionXp,
+      xpTotal: totalXpBefore + sessionXp,
+      xpForNext: currentLevel.xpForNext,
+      levelProgress: currentLevel.progress,
+      streak: streakCount,
+      cardsDone: total,
+      cardsCorrect: correct,
+      accuracy,
+      newWords: newCardsCount.current,
+      leveledUp,
+      newRank: leveledUp ? rankForLevel(currentLevel.level).latin : undefined,
+    };
+
     return (
-      <Screen>
-        <View style={styles.centerFill}>
-          <Ionicons name={isFree ? 'flash' : 'trophy'} size={64} color={theme.accent} />
-          <Text style={[styles.big, { color: theme.text }]}>
-            {isFree ? 'Runde geschafft!' : 'Session geschafft!'}
-          </Text>
-          <Card style={{ width: '100%', gap: Spacing.three }}>
-            <SummaryRow label="Karten" value={`${total}`} theme={theme} />
-            <SummaryRow label="Trefferquote" value={`${accuracy}%`} theme={theme} />
-            <SummaryRow label="XP erhalten" value={`+${sessionXp}`} theme={theme} accent />
-          </Card>
-          {isFree && (
+      <>
+        {/* Keep the session screen as background */}
+        <Screen>
+          <View style={styles.centerFill}>
+            <Ionicons name={isFree ? 'flash' : 'trophy'} size={64} color={theme.accent} />
+            <Text style={[styles.big, { color: theme.text }]}>
+              {isFree ? 'Runde geschafft!' : 'Session geschafft!'}
+            </Text>
+            <Card style={{ width: '100%', gap: Spacing.three }}>
+              <SummaryRow label="Karten" value={`${total}`} theme={theme} />
+              <SummaryRow label="Trefferquote" value={`${accuracy}%`} theme={theme} />
+              <SummaryRow label="XP erhalten" value={`+${sessionXp}`} theme={theme} accent />
+            </Card>
+            {isFree && (
+              <Button
+                title="Noch eine Runde"
+                onPress={() => {
+                  setQueue(getFreeReviewCards(40));
+                  setIdx(0);
+                  setRevealed(false);
+                  setPicked(null);
+                  setSessionXp(0);
+                  setCorrect(0);
+                  setTriumphVisible(false);
+                  activityMarked.current = false;
+                }}
+              />
+            )}
             <Button
-              title="Noch eine Runde"
-              onPress={() => {
-                setQueue(getFreeReviewCards(40));
-                setIdx(0);
-                setRevealed(false);
-                setPicked(null);
-                setSessionXp(0);
-                setCorrect(0);
-                activityMarked.current = false;
-              }}
+              title="Fertig"
+              onPress={() => router.back()}
+              variant={isFree ? 'ghost' : undefined}
             />
-          )}
-          <Button title="Fertig" onPress={() => router.back()} variant={isFree ? 'ghost' : undefined} />
-        </View>
-      </Screen>
+          </View>
+        </Screen>
+        <TriumphOverlay
+          data={triumphData}
+          visible={triumphVisible}
+          onDismiss={() => router.back()}
+        />
+      </>
     );
   }
 
@@ -158,7 +200,7 @@ export default function VocabSession() {
   return (
     <Screen>
       <View style={styles.progressTop}>
-        <ProgressBar progress={idx / total} color={theme.primary} />
+        <AnimatedProgressBar progress={idx / total} color={theme.primary} />
         <Text style={[styles.counter, { color: theme.textSecondary }]}>
           {idx + 1}/{total}
         </Text>

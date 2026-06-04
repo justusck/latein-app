@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { LayoutChangeEvent, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect, useNavigation } from 'expo-router';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ProgressBar } from '@/components/ui/progress';
+import { GoldShimmer } from '@/components/effects/gold-shimmer';
+import { AnimatedProgressBar } from '@/components/ui/animated-progress';
+import { FadeInView } from '@/components/ui/fade-in';
 import { Screen } from '@/components/ui/screen';
 import { SayingCard } from '@/components/saying-card';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
@@ -159,10 +161,21 @@ function HeatmapGrid({
 
 export default function ProfileScreen() {
   const theme = useTheme();
+  const navigation = useNavigation();
   const { xp, coins, streakCount } = useApp();
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [grammarCompleted, setGrammarCompleted] = useState(0);
   const [grammarTotal, setGrammarTotal] = useState(0);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable onPress={() => router.push('/settings')} hitSlop={12}>
+          <Ionicons name="settings-outline" size={22} color={theme.textSecondary} />
+        </Pressable>
+      ),
+    });
+  }, [navigation, theme.textSecondary]);
 
   const refresh = useCallback(() => {
     setStats(getProfileStats());
@@ -185,44 +198,47 @@ export default function ProfileScreen() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }, []);
 
+  const [shimmerTrigger, setShimmerTrigger] = useState(0);
+  useEffect(() => {
+    const t = setTimeout(() => setShimmerTrigger(1), 300);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
     <Screen scroll padded={false}>
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.scroll}>
         {/* ── Rank card ──────────────────────────────────────────────── */}
-        <View style={[styles.rankCard, { backgroundColor: theme.primary }]}>
-          <View style={styles.rankIconWrap}>
-            <Ionicons
-              name={rank.icon as never}
-              size={32}
-              color="rgba(255,255,255,0.9)"
-            />
-          </View>
-          <Text style={styles.rankTitle}>{rank.latin}</Text>
-          <Text style={styles.rankSub}>Level {lvl.level}</Text>
-          <View style={styles.xpBarWrap}>
-            <View
-              style={[
-                styles.xpTrack,
-                { backgroundColor: 'rgba(255,255,255,0.2)' },
-              ]}>
-              <View
-                style={[
-                  styles.xpFill,
-                  { width: `${lvl.progress * 100}%`, backgroundColor: '#fff' },
-                ]}
+        <FadeInView duration={300}>
+          <GoldShimmer trigger={shimmerTrigger}>
+            <View style={[styles.rankCard, { backgroundColor: theme.primary }]}>
+            <View style={styles.rankIconWrap}>
+              <Ionicons
+                name={rank.icon as never}
+                size={32}
+                color="rgba(255,255,255,0.9)"
               />
             </View>
-            <Text style={styles.xpLabel}>
-              {lvl.xpIntoLevel} / {lvl.xpForNext} XP
-            </Text>
+            <Text style={styles.rankTitle}>{rank.latin}</Text>
+            <Text style={styles.rankSub}>Level {lvl.level}</Text>
+            <View style={styles.xpBarWrap}>
+              <AnimatedProgressBar
+                progress={lvl.progress}
+                height={4}
+                color="#fff"
+                trackColor="rgba(255,255,255,0.2)"
+              />
+              <Text style={styles.xpLabel}>
+                {lvl.xpIntoLevel} / {lvl.xpForNext} XP
+              </Text>
+            </View>
           </View>
-        </View>
+          </GoldShimmer>
+        </FadeInView>
 
         {/* ── Saying of the day ─────────────────────────────────────── */}
-        <SayingCard />
+        <FadeInView delay={100} duration={300}>
+          <SayingCard />
+        </FadeInView>
 
         {/* ── Token row ──────────────────────────────────────────────── */}
         <View style={styles.tokenRow}>
@@ -332,9 +348,7 @@ export default function ProfileScreen() {
             />
           </Section>
         ) : null}
-
-        <View style={{ height: Spacing.five }} />
-      </ScrollView>
+      </View>
     </Screen>
   );
 }
@@ -390,7 +404,7 @@ function StatRow({
         <Text style={[styles.statValue, { color: theme.text }]}>{value}</Text>
       </View>
       {!noBar && pct !== undefined && color ? (
-        <ProgressBar progress={pct} height={4} color={color} />
+        <AnimatedProgressBar progress={pct} height={4} color={color} />
       ) : null}
     </View>
   );
@@ -428,14 +442,6 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.three,
   },
   xpBarWrap: { width: '100%', alignItems: 'center' },
-  xpTrack: {
-    width: '100%',
-    height: 4,
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginBottom: 6,
-  },
-  xpFill: { height: 4, borderRadius: 2 },
   xpLabel: {
     fontSize: 11,
     fontWeight: '700',

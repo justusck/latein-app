@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { readAsStringAsync } from 'expo-file-system/legacy';
 import { router, useFocusEffect } from 'expo-router';
@@ -6,12 +6,12 @@ import { useCallback, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
-import { PageHeader } from '@/components/ui/page-header';
-import { Screen } from '@/components/ui/screen';
-import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { TabScreen } from '@/components/ui/tab-screen';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { getBooksWithCoverage, type BookCoverage } from '@/lib/knowledge';
 import { deleteBook, importBook } from '@/lib/reading';
+import { parseEpub } from '@/lib/reading/epub';
 
 export default function LibraryScreen() {
   const theme = useTheme();
@@ -25,14 +25,33 @@ export default function LibraryScreen() {
     try {
       setBusy(true);
       const res = await DocumentPicker.getDocumentAsync({
-        type: ['text/plain', 'text/*'],
+        type: ['application/epub+zip', 'text/plain', 'text/*'],
         copyToCacheDirectory: true,
       });
       if (res.canceled || !res.assets?.[0]) return;
       const asset = res.assets[0];
-      const content = await readAsStringAsync(asset.uri);
-      const title = (asset.name ?? 'Upload').replace(/\.[^.]+$/, '');
-      importBook(title, content);
+      const rawName = (asset.name ?? 'Upload').replace(/\.[^.]+$/, '');
+      const isEpub = asset.name?.toLowerCase().endsWith('.epub')
+        || asset.mimeType === 'application/epub+zip';
+
+      if (isEpub) {
+        // Parse the EPUB directly from the cached file — no second copy.
+        // DocumentPicker already copied it to cache (copyToCacheDirectory: true).
+        const b64 = await readAsStringAsync(asset.uri, { encoding: 'base64' });
+        const bytes = base64ToUint8Array(b64);
+        const epub = parseEpub(bytes);
+
+        // Filename as primary title, EPUB metadata as enhancement
+        const title = rawName || epub.title || 'Ohne Titel';
+        const chapterTitles = epub.chapters.map((c) => c.title);
+        importBook(title, epub.body, epub.author || 'Unbekannt', {
+          filePath: asset.uri,
+          chapterTitles,
+        });
+      } else {
+        const content = await readAsStringAsync(asset.uri);
+        importBook(rawName, content);
+      }
       refresh();
     } catch (e) {
       Alert.alert('Upload fehlgeschlagen', e instanceof Error ? e.message : String(e));
@@ -56,35 +75,39 @@ export default function LibraryScreen() {
   const total = items.length;
 
   const headerRight = (
-    <View style={styles.headerActions}>
-      <Pressable
-        onPress={upload}
-        disabled={busy}
-        hitSlop={8}
-        style={({ pressed }) => [styles.iconBtn, { borderColor: theme.border, opacity: pressed ? 0.7 : 1 }]}>
-        <Ionicons name={busy ? 'hourglass-outline' : 'add'} size={18} color={theme.primary} />
-      </Pressable>
-      <Pressable
-        onPress={() => router.push('/settings')}
-        hitSlop={8}
-        style={({ pressed }) => [styles.iconBtn, { borderColor: theme.border, opacity: pressed ? 0.7 : 1 }]}>
-        <Ionicons name="settings-outline" size={18} color={theme.textSecondary} />
-      </Pressable>
-    </View>
+    <Pressable onPress={() => router.push('/profile')} hitSlop={12}>
+      <MaterialCommunityIcons name="shield-account-outline" size={24} color={theme.textSecondary} />
+    </Pressable>
   );
 
   return (
-    <Screen scroll padded={false}>
-      <PageHeader title="Bibliotheca" right={headerRight} />
-      <View style={styles.content}>
+    <TabScreen title="Bibliotheca" headerRight={headerRight}>
 
-      {/* ── Coverage summary ── */}
-      {total > 0 && (
-        <Text style={[styles.summary, { color: theme.textSecondary }]}>
-          {unlocked}/{total} {unlocked === 1 ? 'Text' : 'Texte'} freigeschaltet
-          {' · '}Wortschatz ≥ 90 % nötig
-        </Text>
-      )}
+      {/* ── Summary + upload ── */}
+      <View style={styles.summaryRow}>
+        {total > 0 ? (
+          <Text style={[styles.summary, { color: theme.textSecondary }]}>
+            {unlocked}/{total} {unlocked === 1 ? 'Text' : 'Texte'} freigeschaltet
+            {' · '}Wortschatz ≥ 90 % nötig
+          </Text>
+        ) : (
+          <View />
+        )}
+        <Pressable
+          onPress={upload}
+          disabled={busy}
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.uploadBtn,
+            { borderColor: theme.border },
+            pressed && { opacity: 0.6 },
+          ]}>
+          <Ionicons name={busy ? 'hourglass-outline' : 'cloud-upload-outline'} size={14} color={theme.primary} />
+          <Text style={[styles.uploadBtnText, { color: theme.primary }]}>
+            {busy ? 'Lädt…' : 'Hochladen'}
+          </Text>
+        </Pressable>
+      </View>
 
       {/* ── Book list ── */}
       {total === 0 ? (
@@ -92,8 +115,14 @@ export default function LibraryScreen() {
           <Ionicons name="book-outline" size={36} color={theme.border} />
           <Text style={[styles.emptyTitle, { color: theme.text }]}>Keine Texte</Text>
           <Text style={[styles.emptySub, { color: theme.textSecondary }]}>
-            Tippe das + oben, um einen eigenen Text hochzuladen.
+            Lade eine .txt- oder .epub-Datei hoch, um lateinische Texte zu lesen.
           </Text>
+          <Button
+            title={busy ? 'Lade…' : 'Text hochladen'}
+            variant="ghost"
+            loading={busy}
+            onPress={upload}
+          />
         </View>
       ) : (
         <View style={[styles.bookList, { borderColor: theme.border }]}>
@@ -109,18 +138,7 @@ export default function LibraryScreen() {
         </View>
       )}
 
-      {total > 0 && (
-        <View style={{ marginTop: Spacing.three }}>
-          <Button
-            title={busy ? 'Lade…' : 'Text hochladen (.txt)'}
-            variant="ghost"
-            loading={busy}
-            onPress={upload}
-          />
-        </View>
-      )}
-      </View>
-    </Screen>
+    </TabScreen>
   );
 }
 
@@ -195,21 +213,38 @@ function BookRow({
   );
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/** Decode a base64 string into a Uint8Array (works in RN without atob). */
+function base64ToUint8Array(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 // ── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.six },
-  headerActions: { flexDirection: 'row', gap: Spacing.two },
-  iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: Radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+  summaryRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.three,
   },
-
-  summary: { fontSize: 13, lineHeight: 18, marginBottom: Spacing.three },
+  summary: { fontSize: 13, lineHeight: 18, flex: 1 },
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: Radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexShrink: 0,
+  },
+  uploadBtnText: { fontSize: 12, fontWeight: '700' },
 
   // Book list container
   bookList: {

@@ -6,7 +6,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ParadigmTable } from '@/components/paradigm-table';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ProgressBar } from '@/components/ui/progress';
+import { AnimatedProgressBar } from '@/components/ui/animated-progress';
 import { Screen } from '@/components/ui/screen';
 import { Radius, Spacing } from '@/constants/theme';
 import { paradigmsForTopic } from '@/data/paradigms';
@@ -150,7 +150,7 @@ export default function GrammarLesson() {
   return (
     <Screen scroll>
       <View style={styles.progressTop}>
-        <ProgressBar progress={idx / cards.length} color={theme.primary} />
+        <AnimatedProgressBar progress={idx / cards.length} color={theme.primary} />
         <Text style={[styles.counter, { color: theme.textSecondary }]}>
           {idx + 1}/{cards.length}
         </Text>

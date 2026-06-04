@@ -1,11 +1,8 @@
 import { buildKnowledgeContext } from '@/lib/knowledge';
+import { generateResponse, loadModel, getEngineStatus, onStatusChange } from './engine';
 import type { Pronunciation } from '@/store/app';
 
-/** Direct Claude API client (key lives on-device; single-user app). */
-
-const API_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-sonnet-4-6';
-const MAX_TOKENS = 1024;
+/** On-device Gemma 4 conversation (no cloud API). */
 
 export type AiMode = 'chat' | 'roleplay' | 'correction';
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
@@ -17,70 +14,77 @@ export const AI_MODES: { id: AiMode; label: string; opener: string }[] = [
 ];
 
 const BASE_INSTRUCTIONS = [
-  'Du bist „Magister", ein geduldiger, ermutigender Latein-Tutor in einer Lern-App.',
+  'Du bist ein KI-Assistent in einer Latein-Lern-App.',
   'Schreibe deine lateinischen Sätze KURZ und EINFACH. Nutze möglichst nur Wortschatz und',
   'Grammatik, die der/die Lernende bereits beherrscht (siehe Kontext unten).',
-  'Wenn du ein neues Wort einführst, schreibe die deutsche Bedeutung direkt in Klammern dahinter.',
-  'Antworte in 1–3 kurzen lateinischen Sätzen. Danach gib in einer separaten Zeile eine kurze',
-  'deutsche Hilfe/Übersetzung in Klammern, eingeleitet mit „DE: ".',
-  'Korrigiere Fehler des Lernenden freundlich und erkläre sie knapp auf Deutsch.',
+  'Antworte in 1–3 kurzen lateinischen Sätzen.',
 ].join(' ');
 
 const MODE_INSTRUCTIONS: Record<AiMode, string> = {
-  chat: 'Führe ein einfaches Alltagsgespräch und stelle leichte Rückfragen.',
+  chat:
+    'Führe ein natürliches, hilfreiches Gespräch auf Latein. Stelle leichte Rückfragen. ' +
+    'SCHREIBE NUR AUF LATEIN — keine deutschen Übersetzungen, keine Erklärungen auf Deutsch.',
   roleplay:
-    'Spiele eine Szene auf dem römischen Forum (Marktplatz). Bleibe in der Rolle des Händlers.',
+    'Du verkörperst einen Charakter. Bleibe vollständig und konsequent in deiner Rolle. ' +
+    'SCHREIBE NUR AUF LATEIN — keine deutschen Übersetzungen, keine Erklärungen auf Deutsch.',
   correction:
-    'Der/die Lernende schreibt lateinische Sätze. Korrigiere sie, lobe Gelungenes und erkläre Fehler.',
+    'Der/die Lernende schreibt lateinische Sätze. Korrigiere Fehler, lobe Gelungenes und ' +
+    'erkläre die Korrekturen kurz auf Deutsch.',
 };
 
-function buildSystem(mode: AiMode, pronunciation: Pronunciation) {
+function buildSystemPrompt(
+  mode: AiMode,
+  pronunciation: Pronunciation,
+  characterPrompt?: string,
+): string {
   const knowledge = buildKnowledgeContext().summary;
+  const extra =
+    mode === 'roleplay' && characterPrompt
+      ? `\n\nCharakterbeschreibung (deutsch):\n${characterPrompt}`
+      : '';
+
   return [
-    // Stable block — cached across turns.
-    {
-      type: 'text' as const,
-      text: `${BASE_INSTRUCTIONS}\n\nAussprache-Kontext: ${pronunciation === 'classical' ? 'klassisch' : 'kirchlich'}.`,
-      cache_control: { type: 'ephemeral' as const },
-    },
-    // Mode + knowledge (changes as the learner progresses).
-    { type: 'text' as const, text: `MODUS: ${MODE_INSTRUCTIONS[mode]}\n\n${knowledge}` },
-  ];
+    BASE_INSTRUCTIONS,
+    `\nAussprache-Kontext: ${pronunciation === 'classical' ? 'klassisch' : 'kirchlich'}.`,
+    `\n\nMODUS: ${MODE_INSTRUCTIONS[mode]}`,
+    `\n\n${knowledge}`,
+    extra,
+  ].join('');
 }
 
 export async function chat(opts: {
-  apiKey: string;
   mode: AiMode;
   history: ChatMessage[];
   pronunciation: Pronunciation;
+  characterPrompt?: string;
 }): Promise<string> {
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': opts.apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: buildSystem(opts.mode, opts.pronunciation),
-      messages: opts.history.map((m) => ({ role: m.role, content: m.content })),
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`API ${res.status}: ${text.slice(0, 300)}`);
+  // Ensure model is loaded (no-op if already ready).
+  // loadModel handles download + init, idempotent.
+  const status = getEngineStatus();
+  if (status.state === 'unloaded' || status.state === 'error') {
+    await loadModel();
+  } else if (status.state === 'downloading' || status.state === 'loading') {
+    // Wait for ongoing load to finish — poll status changes
+    await new Promise<void>((resolve, reject) => {
+      const unsub = onStatusChange((s) => {
+        if (s.state === 'ready') { unsub(); resolve(); }
+        if (s.state === 'error') { unsub(); reject(new Error(s.error ?? 'Modell-Fehler')); }
+      });
+    });
   }
-  const data = (await res.json()) as { content?: { type: string; text?: string }[] };
-  return (data.content ?? [])
-    .filter((b) => b.type === 'text')
-    .map((b) => b.text ?? '')
-    .join('\n')
-    .trim();
+
+  const systemPrompt = buildSystemPrompt(opts.mode, opts.pronunciation, opts.characterPrompt);
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...opts.history.map((m) => ({ role: m.role, content: m.content })),
+  ];
+
+  return generateResponse(messages);
 }
+
+// Re-export engine lifecycle functions so the UI can subscribe.
+export { loadModel, getEngineStatus, onStatusChange, unloadModel } from './engine';
 
 /** Extract just the Latin part (drop the "DE: …" helper line) for TTS. */
 export function latinPart(text: string): string {

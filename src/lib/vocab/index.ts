@@ -22,6 +22,37 @@ export type LemmaWithStatus = Lemma & {
   status: 'new' | 'introduced' | 'known';
 };
 
+export type LemmaWithFullStatus = Lemma & {
+  status: 'new' | 'introduced' | 'known';
+  due: number | null; // epoch ms, null when no vocabCard exists yet
+  stability: number | null; // FSRS stability, null when not yet introduced
+  lastReview: number | null;
+};
+
+/** All lemmas joined with FSRS card state, ordered by frequency rank. */
+export function getAllLemmasWithStatus(): LemmaWithFullStatus[] {
+  const rows = db
+    .select()
+    .from(lemmas)
+    .leftJoin(vocabCards, eq(lemmas.id, vocabCards.lemmaId))
+    .orderBy(asc(lemmas.freqRank))
+    .all();
+  return rows.map((r) => {
+    const card = r.vocab_cards;
+    let status: LemmaWithFullStatus['status'] = 'new';
+    if (card) {
+      status = card.stability >= KNOWN_STABILITY_DAYS ? 'known' : 'introduced';
+    }
+    return {
+      ...r.lemmas,
+      status,
+      due: card?.due ?? null,
+      stability: card?.stability ?? null,
+      lastReview: card?.lastReview ?? null,
+    };
+  });
+}
+
 function startOfToday(): number {
   const d = new Date();
   d.setHours(0, 0, 0, 0);

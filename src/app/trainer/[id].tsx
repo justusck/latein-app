@@ -1,14 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { useLayoutEffect, useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { TriumphOverlay, type TriumphData } from '@/components/effects/triumph-overlay';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
 import { Radius, Spacing } from '@/constants/theme';
 import { getParadigm } from '@/data/paradigms';
 import { useTheme } from '@/hooks/use-theme';
+import { levelForXp, rankForLevel } from '@/lib/gamification';
 import { normalizeLatin } from '@/lib/latin/normalize';
 import { speakLatin } from '@/lib/speech';
 import { useApp } from '@/store/app';
@@ -20,7 +22,7 @@ export default function TrainerScreen() {
   const theme = useTheme();
   const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { pronunciation, awardXp, registerActivity } = useApp();
+  const { pronunciation, awardXp, registerActivity, xp: totalXpBefore, streakCount } = useApp();
 
   const paradigm = useMemo(() => (id ? getParadigm(id) : undefined), [id]);
 
@@ -30,6 +32,9 @@ export default function TrainerScreen() {
   );
   const [checked, setChecked] = useState(false);
   const [revealed, setRevealed] = useState(false);
+  const [triumphVisible, setTriumphVisible] = useState(false);
+  const sessionXp = useRef(0);
+  const prevLevel = useRef(levelForXp(totalXpBefore));
 
   useLayoutEffect(() => {
     if (paradigm) navigation.setOptions({ title: paradigm.title });
@@ -58,7 +63,10 @@ export default function TrainerScreen() {
   const check = () => {
     setChecked(true);
     registerActivity();
-    awardXp(correctCells * XP_PER_CELL + (correctCells === totalCells ? XP_ALL_CORRECT_BONUS : 0));
+    const earned = correctCells * XP_PER_CELL + (correctCells === totalCells ? XP_ALL_CORRECT_BONUS : 0);
+    sessionXp.current = earned;
+    awardXp(earned);
+    setTimeout(() => setTriumphVisible(true), 400);
   };
 
   const reset = () => {
@@ -138,6 +146,36 @@ export default function TrainerScreen() {
           </>
         )}
       </View>
+
+      {/* Triumph overlay */}
+      {checked && triumphVisible && (() => {
+        const currentLevel = levelForXp(totalXpBefore + sessionXp.current);
+        const leveledUp = currentLevel.level > prevLevel.current.level;
+        const allCorrect = correctCells === totalCells;
+
+        const data: TriumphData = {
+          xp: sessionXp.current,
+          xpTotal: totalXpBefore + sessionXp.current,
+          xpForNext: currentLevel.xpForNext,
+          levelProgress: currentLevel.progress,
+          streak: streakCount,
+          cardsDone: totalCells,
+          cardsCorrect: correctCells,
+          accuracy: Math.round((correctCells / totalCells) * 100),
+          newWords: 0,
+          leveledUp,
+          newRank: leveledUp ? rankForLevel(currentLevel.level).latin : undefined,
+        };
+
+        return (
+          <TriumphOverlay
+            key={allCorrect ? 'perfect' : 'done'}
+            data={data}
+            visible={triumphVisible}
+            onDismiss={() => router.back()}
+          />
+        );
+      })()}
     </Screen>
   );
 }

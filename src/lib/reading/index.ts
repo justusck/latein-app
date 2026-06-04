@@ -35,7 +35,13 @@ export function glossForKey(key: string): Lemma | null {
  * Import an uploaded text: tokenise, map forms → lemmas via the bundled
  * Form→Lemma table, precompute coverage counts, and store the book.
  */
-export function importBook(title: string, body: string, author = 'Eigener Upload'): string {
+export function importBook(
+  title: string,
+  body: string,
+  author = 'Eigener Upload',
+  opts?: { filePath?: string; chapterTitles?: string[] },
+): string {
+  // Tokenise for coverage computation (always needed).
   const formMap = loadFormMap();
   const tokens = tokenizeLatin(body).filter((t) => t.isWord && t.key);
   const counts = new Map<number, number>();
@@ -49,6 +55,8 @@ export function importBook(title: string, body: string, author = 'Eigener Upload
   const knownRatio = tokens.length ? matchedTokens / tokens.length : 0;
   const levelScore = Math.round((1 - knownRatio) * 8 + Math.min(2, tokens.length / 400) + 1);
 
+  const isEpub = !!opts?.filePath;
+
   const id = `user-${Date.now()}`;
   db.insert(books)
     .values({
@@ -61,7 +69,10 @@ export function importBook(title: string, body: string, author = 'Eigener Upload
       levelScore,
       totalTokens: tokens.length,
       uniqueLemmas: counts.size,
-      body,
+      // TXT: raw text in body. EPUB: body is empty, text lives in the file.
+      body: isEpub ? '' : body,
+      chapters: opts?.chapterTitles ? JSON.stringify(opts.chapterTitles) : null,
+      filePath: opts?.filePath ?? null,
       builtin: false,
       addedAt: Date.now(),
     })

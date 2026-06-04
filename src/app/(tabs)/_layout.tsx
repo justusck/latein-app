@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { Platform } from 'react-native';
 
 import { useTheme } from '@/hooks/use-theme';
 
@@ -14,8 +15,27 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: theme.background,
           borderTopColor: theme.border,
+          borderTopWidth: 0,
+          ...Platform.select({
+            ios: {
+              shadowColor: theme.text,
+              shadowOffset: { width: 0, height: -1 },
+              shadowOpacity: 0.06,
+              shadowRadius: 8,
+            },
+            android: {
+              elevation: 4,
+            },
+          }),
         },
-        tabBarLabelStyle: { fontWeight: '700', fontSize: 11 },
+        tabBarLabelStyle: {
+          fontWeight: '800',
+          fontSize: 10,
+          letterSpacing: 0.2,
+        },
+        tabBarIconStyle: {
+          marginBottom: -2,
+        },
       }}>
       <Tabs.Screen
         name="index"

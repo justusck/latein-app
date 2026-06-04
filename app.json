@@ -2,7 +2,7 @@
   "expo": {
     "name": "Latina",
     "slug": "latein-app",
-    "version": "1.0.3",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "lateinapp",
@@ -38,7 +38,8 @@
       "expo-sqlite",
       "expo-secure-store",
       "expo-audio",
-      "./plugins/withLatinaWidget"
+      "./plugins/withLatinaWidget",
+      "llama.rn"
     ],
     "experiments": {
       "typedRoutes": true,

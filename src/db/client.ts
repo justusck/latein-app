@@ -102,7 +102,9 @@ CREATE TABLE IF NOT EXISTS books (
   level_score REAL NOT NULL,
   total_tokens INTEGER NOT NULL DEFAULT 0,
   unique_lemmas INTEGER NOT NULL DEFAULT 0,
-  body TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  chapters TEXT,
+  file_path TEXT,
   builtin INTEGER NOT NULL DEFAULT 1,
   added_at INTEGER NOT NULL
 );
@@ -162,6 +164,17 @@ let initialized = false;
 export function initDatabase(): void {
   if (initialized) return;
   expoDb.execSync(DDL);
+
+  // Lightweight runtime migrations for existing installs.
+  // ALTER TABLE … ADD COLUMN is a no-op in SQLite when the column already exists
+  // (as of SQLite 3.35+), but older versions throw. Wrapping in a try keeps us safe.
+  for (const sql of [
+    `ALTER TABLE books ADD COLUMN chapters TEXT;`,
+    `ALTER TABLE books ADD COLUMN file_path TEXT;`,
+  ]) {
+    try { expoDb.execSync(sql); } catch { /* column exists → skip */ }
+  }
+
   initialized = true;
 }
 

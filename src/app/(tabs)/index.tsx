@@ -1,35 +1,101 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { readAsStringAsync } from 'expo-file-system/legacy';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { PageHeader } from '@/components/ui/page-header';
-import { ProgressBar } from '@/components/ui/progress';
-import { Screen } from '@/components/ui/screen';
-import { toRoman } from '@/constants/strings';
+import { SearchBar } from '@/components/ui/search-bar';
+import { TabScreen } from '@/components/ui/tab-screen';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useStrings } from '@/hooks/use-strings';
 import { useTheme } from '@/hooks/use-theme';
-import { getGroupProgress, getVocabStats, type GroupProgress, type VocabStats } from '@/lib/vocab';
+import { getAllLemmasWithStatus, getVocabStats, type LemmaWithFullStatus, type VocabStats } from '@/lib/vocab';
 import { importVocab, parseDeck } from '@/lib/vocab/import';
 import { useApp } from '@/store/app';
+
+// ── Filter & Sort types ────────────────────────────────────────────────────
+
+type FilterKey = 'all' | 'new' | 'introduced' | 'known';
+type SortKey = 'freq' | 'recent';
+
+interface FilterDef {
+  key: FilterKey;
+  status: LemmaWithFullStatus['status'] | null; // null = all
+  labelKey: 'filterAll' | 'statusNew' | 'statusIntroduced' | 'statusKnown';
+}
+
+const FILTERS: FilterDef[] = [
+  { key: 'all', status: null, labelKey: 'filterAll' },
+  { key: 'new', status: 'new', labelKey: 'statusNew' },
+  { key: 'introduced', status: 'introduced', labelKey: 'statusIntroduced' },
+  { key: 'known', status: 'known', labelKey: 'statusKnown' },
+];
+
+// ── Screen ──────────────────────────────────────────────────────────────────
 
 export default function VocabScreen() {
   const theme = useTheme();
   const t = useStrings();
   const dailyGoalNew = useApp((s) => s.dailyGoalNew);
+  const [allLemmas, setAllLemmas] = useState<LemmaWithFullStatus[]>([]);
   const [stats, setStats] = useState<VocabStats | null>(null);
-  const [groups, setGroups] = useState<GroupProgress[]>([]);
   const [importing, setImporting] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
+  const [sortBy, setSortBy] = useState<SortKey>('freq');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const refresh = useCallback(() => {
     setStats(getVocabStats(dailyGoalNew));
-    setGroups(getGroupProgress());
+    setAllLemmas(getAllLemmasWithStatus());
   }, [dailyGoalNew]);
 
   useFocusEffect(useCallback(() => refresh(), [refresh]));
+
+  // ── Counts per filter ──────────────────────────────────────────────────
+
+  const counts = useMemo(() => {
+    const c: Record<FilterKey, number> = { all: 0, new: 0, introduced: 0, known: 0 };
+    for (const l of allLemmas) {
+      c.all++;
+      c[l.status]++;
+    }
+    return c;
+  }, [allLemmas]);
+
+  // ── Filter → search → sort pipeline ────────────────────────────────────
+
+  const displayed = useMemo(() => {
+    let list = [...allLemmas];
+
+    // Filter by status
+    const filter = FILTERS.find((f) => f.key === activeFilter);
+    if (filter?.status) {
+      list = list.filter((l) => l.status === filter.status);
+    }
+
+    // Search
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(
+        (l) =>
+          l.lemma.toLowerCase().includes(q) ||
+          l.glossDe.toLowerCase().includes(q) ||
+          (l.principalParts ?? '').toLowerCase().includes(q),
+      );
+    }
+
+    // Sort
+    if (sortBy === 'recent') {
+      list.sort((a, b) => (b.lastReview ?? 0) - (a.lastReview ?? 0));
+    } else {
+      list.sort((a, b) => (a.freqRank ?? 99999) - (b.freqRank ?? 99999));
+    }
+
+    return list;
+  }, [allLemmas, activeFilter, searchQuery, sortBy]);
+
+  // ── Import (unchanged logic) ───────────────────────────────────────────
 
   const importDeck = async () => {
     try {
@@ -58,189 +124,266 @@ export default function VocabScreen() {
     }
   };
 
+  // ── Today summary values ───────────────────────────────────────────────
+
   const due = stats?.dueCount ?? 0;
   const newRemaining = stats?.newRemainingToday ?? 0;
   const canStudy = due > 0 || newRemaining > 0;
   const totalToday = due + newRemaining;
 
-  return (
-    <Screen scroll padded={false}>
-      <PageHeader
-        title={t.vocabTitle}
-        right={
-          <View style={{ flexDirection: 'row', gap: 18, alignItems: 'center' }}>
-            <Pressable onPress={() => router.push('/profile')} hitSlop={12}>
-              <Ionicons name="person-circle-outline" size={22} color={theme.textSecondary} />
-            </Pressable>
-            <Pressable onPress={() => router.push('/settings')} hitSlop={12}>
-              <Ionicons name="settings-outline" size={20} color={theme.textSecondary} />
-            </Pressable>
-          </View>
-        }
-      />
+  const headerRight = (
+    <Pressable onPress={() => router.push('/profile')} hitSlop={12}>
+      <MaterialCommunityIcons name="shield-account-outline" size={24} color={theme.textSecondary} />
+    </Pressable>
+  );
 
-      <View style={styles.content}>
-        {/* Today summary + actions */}
-        <View style={styles.todayRow}>
-          <View style={styles.todayInfo}>
-            <Text style={[styles.todayCount, { color: theme.text }]}>{totalToday}</Text>
-            <Text style={[styles.todayLabel, { color: theme.textSecondary }]}>
-              {t.cardsToday(totalToday)}
-            </Text>
-            <View style={styles.todayDetail}>
-              {due > 0 && (
-                <Text style={[styles.todayDetailText, { color: theme.primary }]}>
-                  {due} fällig
+  // ── Main render ────────────────────────────────────────────────────────
+
+  return (
+    <TabScreen title={t.vocabTitle} headerRight={headerRight} scroll={false}>
+      <FlatList
+        data={displayed}
+        keyExtractor={(l) => String(l.id)}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <View>
+            {/* ── Today summary + actions ────────────────────────────────── */}
+            <View style={styles.todayRow}>
+              <View style={styles.todayInfo}>
+                <Text style={[styles.todayCount, { color: theme.text }]}>{totalToday}</Text>
+                <Text style={[styles.todayLabel, { color: theme.textSecondary }]}>
+                  {t.cardsToday(totalToday)}
                 </Text>
-              )}
-              {due > 0 && newRemaining > 0 && (
-                <Text style={[styles.todayDetailSep, { color: theme.border }]}> · </Text>
-              )}
-              {newRemaining > 0 && (
-                <Text style={[styles.todayDetailText, { color: theme.textSecondary }]}>
-                  {newRemaining} neu
+                <View style={styles.todayDetail}>
+                  {due > 0 && (
+                    <Text style={[styles.todayDetailText, { color: theme.primary }]}>
+                      {due} fällig
+                    </Text>
+                  )}
+                  {due > 0 && newRemaining > 0 && (
+                    <Text style={[styles.todayDetailSep, { color: theme.border }]}> · </Text>
+                  )}
+                  {newRemaining > 0 && (
+                    <Text style={[styles.todayDetailText, { color: theme.textSecondary }]}>
+                      {newRemaining} neu
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.todayActions}>
+                <Pressable
+                  onPress={() => router.push('/vocab-session')}
+                  disabled={!canStudy}
+                  style={({ pressed }) => [
+                    styles.cta,
+                    { backgroundColor: theme.primary },
+                    !canStudy && { opacity: 0.35 },
+                    pressed && canStudy && { opacity: 0.85 },
+                  ]}>
+                  <Text style={styles.ctaText}>
+                    {canStudy ? t.startStudying : t.allDone}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => router.push('/vocab-session?mode=free')}
+                  style={({ pressed }) => [
+                    styles.freeBtn,
+                    { borderColor: theme.border },
+                    pressed && { opacity: 0.6 },
+                  ]}>
+                  <Ionicons name="flash-outline" size={13} color={theme.textSecondary} />
+                  <Text style={[styles.freeBtnText, { color: theme.textSecondary }]}>
+                    {t.freePractice}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+
+            {/* ── Divider ────────────────────────────────────────────────── */}
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+            {/* ── Search bar ─────────────────────────────────────────────── */}
+            <View style={styles.searchGap}>
+              <SearchBar
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder={t.searchVocab}
+              />
+            </View>
+
+            {/* ── Filter pills (horizontal scroll, no wrap) ───────────────── */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterScroll}
+              style={{ marginBottom: Spacing.three }}>
+              {FILTERS.map((f) => {
+                const isActive = activeFilter === f.key;
+                const label = t[f.labelKey];
+                const count = counts[f.key];
+                return (
+                  <Pressable
+                    key={f.key}
+                    onPress={() => setActiveFilter(f.key)}
+                    style={({ pressed }) => [
+                      styles.filterPill,
+                      {
+                        backgroundColor: isActive ? theme.primary : theme.muted,
+                        borderColor: isActive ? theme.primary : theme.border,
+                      },
+                      pressed && { opacity: isActive ? 0.85 : 0.65 },
+                    ]}>
+                    <Text
+                      style={[
+                        styles.filterPillLabel,
+                        { color: isActive ? '#FFFFFF' : theme.textSecondary },
+                      ]}>
+                      {label}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.filterPillCount,
+                        { color: isActive ? 'rgba(255,255,255,0.75)' : theme.textSecondary },
+                      ]}>
+                      {count}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {/* ── Section head with sort ──────────────────────────────────── */}
+            <View style={styles.sectionHead}>
+              <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+                {searchQuery.trim()
+                  ? `${displayed.length} ${displayed.length === 1 ? 'Treffer' : 'Treffer'}`
+                  : activeFilter === 'all'
+                    ? `${counts.all} ${counts.all === 1 ? 'Vokabel' : 'Vokabeln'}`
+                    : `${counts[activeFilter]} ${t[FILTERS.find((f) => f.key === activeFilter)!.labelKey]}`}
+              </Text>
+              <Pressable
+                onPress={() => setSortBy((s) => (s === 'freq' ? 'recent' : 'freq'))}
+                hitSlop={8}
+                style={({ pressed }) => [styles.sortBtn, pressed && { opacity: 0.5 }]}>
+                <Text style={[styles.sortLabel, { color: theme.textSecondary }]}>
+                  {sortBy === 'freq' ? t.sortFreq : t.sortRecent}
                 </Text>
-              )}
+                <Ionicons
+                  name="swap-vertical-outline"
+                  size={12}
+                  color={theme.textSecondary}
+                />
+              </Pressable>
             </View>
           </View>
-
-          <View style={styles.todayActions}>
-            <Pressable
-              onPress={() => router.push('/vocab-session')}
-              disabled={!canStudy}
-              style={({ pressed }) => [
-                styles.cta,
-                { backgroundColor: theme.primary },
-                !canStudy && { opacity: 0.35 },
-                pressed && canStudy && { opacity: 0.85 },
-              ]}>
-              <Text style={styles.ctaText}>
-                {canStudy ? t.startStudying : t.allDone}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => router.push('/vocab-session?mode=free')}
-              style={({ pressed }) => [
-                styles.freeBtn,
-                { borderColor: theme.border },
-                pressed && { opacity: 0.6 },
-              ]}>
-              <Ionicons name="flash-outline" size={13} color={theme.textSecondary} />
-              <Text style={[styles.freeBtnText, { color: theme.textSecondary }]}>
-                {t.freePractice}
-              </Text>
-            </Pressable>
+        }
+        renderItem={({ item }) => (
+          <WordRow lemma={item} theme={theme} t={t} />
+        )}
+        ListEmptyComponent={
+          <View style={styles.emptyWrap}>
+            <Ionicons name="search-outline" size={36} color={theme.border} />
+            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+              {searchQuery.trim() ? t.noVocabFound : t.noVocabFound}
+            </Text>
           </View>
-        </View>
-
-        {/* Divider */}
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-
-        {/* Groups */}
-        <View style={styles.groupList}>
-          {groups.map((g) => (
-            <GroupRow key={g.group} g={g} theme={theme} t={t} />
-          ))}
-        </View>
-
-        {/* Import — subtle, out of the way */}
-        <Pressable
-          onPress={importDeck}
-          disabled={importing}
-          style={({ pressed }) => [styles.importLink, pressed && { opacity: 0.5 }]}>
-          <Ionicons name="add-circle-outline" size={15} color={theme.textSecondary} />
-          <Text style={[styles.importLinkText, { color: theme.textSecondary }]}>
-            {importing ? t.importing : t.importVocab}
-          </Text>
-        </Pressable>
-      </View>
-    </Screen>
+        }
+        ListFooterComponent={
+          <>
+            {/* ── Import link ────────────────────────────────────────────── */}
+            <Pressable
+              onPress={importDeck}
+              disabled={importing}
+              style={({ pressed }) => [styles.importLink, pressed && { opacity: 0.5 }]}>
+              <Ionicons name="add-circle-outline" size={15} color={theme.textSecondary} />
+              <Text style={[styles.importLinkText, { color: theme.textSecondary }]}>
+                {importing ? t.importing : t.importVocab}
+              </Text>
+            </Pressable>
+            {/* Bottom spacer so last rows aren't hidden behind tab bar */}
+            <View style={styles.bottomSpacer} />
+          </>
+        }
+      />
+    </TabScreen>
   );
 }
 
-// ── GroupRow ───────────────────────────────────────────────────────────────
+// ── WordRow ─────────────────────────────────────────────────────────────────
 
-function StatusChip({ label, count, color }: { label: string; count: number; color: string }) {
-  if (count <= 0) return null;
+function WordRow({
+  lemma,
+  theme,
+  t,
+}: {
+  lemma: LemmaWithFullStatus;
+  theme: ReturnType<typeof useTheme>;
+  t: ReturnType<typeof useStrings>;
+}) {
+  const now = Date.now();
+  const isDue = lemma.due !== null && lemma.due <= now;
+
+  const icon = (() => {
+    switch (lemma.status) {
+      case 'known':
+        return { name: 'checkmark-circle' as const, color: theme.success };
+      case 'introduced':
+        return { name: 'time-outline' as const, color: isDue ? theme.primary : theme.textSecondary };
+      default:
+        return { name: 'ellipse-outline' as const, color: theme.textSecondary };
+    }
+  })();
+
   return (
-    <View style={[styles.chip, { backgroundColor: color + '18', borderColor: color + '40' }]}>
-      <Text style={[styles.chipLabel, { color }]}>{label}</Text>
-      <Text style={[styles.chipCount, { color }]}>{count}</Text>
+    <View style={[styles.wordRow, { borderColor: theme.border }]}>
+      {/* Status icon + due dot */}
+      <View style={styles.wordIconWrap}>
+        <Ionicons name={icon.name} size={18} color={icon.color} />
+        {isDue && (
+          <View
+            style={[styles.dueDot, { backgroundColor: theme.primary }]}
+            accessibilityLabel={t.dueToday}
+          />
+        )}
+      </View>
+
+      {/* Text content */}
+      <View style={styles.wordBody}>
+        <View style={styles.wordHead}>
+          <Text style={[styles.wordLemma, { color: theme.text }]} numberOfLines={1}>
+            {lemma.lemma}
+          </Text>
+          {lemma.pos && (
+            <Text style={[styles.wordPos, { color: theme.textSecondary }]}>
+              {lemma.pos}
+            </Text>
+          )}
+        </View>
+        {lemma.principalParts ? (
+          <Text style={[styles.wordParts, { color: theme.textSecondary }]} numberOfLines={1}>
+            {lemma.principalParts}
+          </Text>
+        ) : null}
+        <Text style={[styles.wordGloss, { color: theme.textSecondary }]} numberOfLines={1}>
+          {lemma.glossDe}
+        </Text>
+      </View>
     </View>
   );
 }
 
-function GroupRow({
-  g,
-  theme,
-  t,
-}: {
-  g: GroupProgress;
-  theme: ReturnType<typeof useTheme>;
-  t: ReturnType<typeof useStrings>;
-}) {
-  const allIntroduced = g.total > 0 && g.introduced === g.total;
-  const active = g.introduced > 0;
-  const numeral = g.group === 0 ? '★' : toRoman(g.group);
-  const pct = g.total > 0 ? g.introduced / g.total : 0;
-
-  const badgeBg = allIntroduced ? theme.accent : active ? theme.primary : theme.muted;
-  const badgeFg = allIntroduced || active ? '#FFFFFF' : theme.textSecondary;
-  const newCount = g.total - g.introduced;
-  const learningCount = g.introduced - g.known;
-
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.groupCard,
-        {
-          backgroundColor: theme.card,
-          borderColor: theme.border,
-          opacity: pressed ? 0.7 : 1,
-        },
-      ]}
-      onPress={() => router.push(`/vocab-group/${g.group}`)}>
-      <View style={[styles.groupBadge, { backgroundColor: badgeBg }]}>
-        <Text style={[styles.groupBadgeText, { color: badgeFg }]}>{numeral}</Text>
-      </View>
-
-      <View style={styles.groupContent}>
-        <View style={styles.groupHeader}>
-          <Text
-            style={[styles.groupTitle, { color: active ? theme.text : theme.textSecondary }]}
-            numberOfLines={1}>
-            {g.group === 0 ? t.customVocab : t.portion(g.group)}
-          </Text>
-          <Text style={[styles.groupCount, { color: theme.textSecondary }]}>
-            {g.introduced}/{g.total}
-          </Text>
-        </View>
-
-        <ProgressBar progress={pct} height={6} color={badgeBg} />
-
-        <View style={styles.chipRow}>
-          <StatusChip label={t.statusNew} count={newCount} color={theme.textSecondary} />
-          <StatusChip label={t.statusIntroduced} count={learningCount} color={theme.primary} />
-          <StatusChip label={t.statusKnown} count={g.known} color={theme.accent} />
-        </View>
-      </View>
-
-      <Ionicons name="chevron-forward" size={16} color={theme.border} style={{ marginLeft: Spacing.one }} />
-    </Pressable>
-  );
-}
-
-// ── Styles ─────────────────────────────────────────────────────────────────
+// ── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  content: {
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.half,
-    paddingBottom: Spacing.six,
+  listContent: {
+    paddingBottom: Spacing.three,
   },
 
-  // ── Today ──────────────────────────────────────────────────────────────
+  // ── Today summary (preserved) ──────────────────────────────────────────
   todayRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -299,52 +442,123 @@ const styles = StyleSheet.create({
   // ── Divider ────────────────────────────────────────────────────────────
   divider: { height: StyleSheet.hairlineWidth, marginVertical: Spacing.four },
 
-  // ── Group cards ────────────────────────────────────────────────────────
-  groupList: { gap: Spacing.two, marginBottom: Spacing.four },
-  groupCard: {
+  // ── Search ─────────────────────────────────────────────────────────────
+  searchGap: {
+    marginBottom: Spacing.two + 2,
+  },
+
+  // ── Filters ────────────────────────────────────────────────────────────
+  filterScroll: {
+    gap: Spacing.one,
+    paddingRight: Spacing.three, // breathing room at end of scroll
+  },
+  filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.three,
-    padding: Spacing.three,
-    borderRadius: Radius.md,
+    gap: 5,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: Radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  groupBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
+  filterPillLabel: {
+    fontSize: 13,
+    fontWeight: '700',
   },
-  groupBadgeText: {
-    fontFamily: Fonts.serifBody,
-    fontSize: 14,
+  filterPillCount: {
+    fontSize: 12,
     fontWeight: '800',
-    color: '#fff',
+    fontVariant: ['tabular-nums'],
   },
-  groupContent: { flex: 1, gap: 6 },
-  groupHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-  },
-  groupTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
-  groupCount: { fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] },
 
-  // ── Status chips ───────────────────────────────────────────────────────
-  chipRow: { flexDirection: 'row', gap: Spacing.one, flexWrap: 'wrap' },
-  chip: {
+  // ── Section head + sort ────────────────────────────────────────────────
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.half,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  sortBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
   },
-  chipLabel: { fontSize: 10, fontWeight: '700' },
-  chipCount: { fontSize: 10, fontWeight: '800' },
+  sortLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  // ── Word rows ──────────────────────────────────────────────────────────
+  wordRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two + 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  wordIconWrap: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  dueDot: {
+    position: 'absolute',
+    top: -1,
+    right: -1,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  wordBody: {
+    flex: 1,
+    gap: 1,
+  },
+  wordHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Spacing.one + 2,
+  },
+  wordLemma: {
+    fontSize: 15,
+    fontWeight: '800',
+    flexShrink: 1,
+  },
+  wordPos: {
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    flexShrink: 0,
+  },
+  wordParts: {
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  wordGloss: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+
+  // ── Empty ──────────────────────────────────────────────────────────────
+  emptyWrap: {
+    alignItems: 'center',
+    paddingVertical: Spacing.six,
+    gap: Spacing.two,
+  },
+  emptyText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
 
   // ── Import ─────────────────────────────────────────────────────────────
   importLink: {
@@ -353,6 +567,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
     paddingVertical: Spacing.one,
+    marginTop: Spacing.four,
   },
   importLinkText: { fontSize: 12, fontWeight: '500' },
+
+  // ── Misc ───────────────────────────────────────────────────────────────
+  bottomSpacer: { height: Spacing.six },
 });

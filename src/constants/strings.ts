@@ -30,6 +30,12 @@ export type UiStrings = {
   statusIntroduced: string;
   statusKnown: string;
   settingsLangLabel: string;
+  filterAll: string;
+  searchVocab: string;
+  sortFreq: string;
+  sortRecent: string;
+  noVocabFound: string;
+  dueToday: string;
 };
 
 export const DE: UiStrings = {
@@ -51,6 +57,12 @@ export const DE: UiStrings = {
   statusIntroduced: 'Lernend',
   statusKnown: 'Gefestigt',
   settingsLangLabel: 'App-Sprache',
+  filterAll: 'Alle',
+  searchVocab: 'Vokabel suchen…',
+  sortFreq: 'Frequenz',
+  sortRecent: 'Zuletzt',
+  noVocabFound: 'Keine Vokabeln gefunden',
+  dueToday: 'heute fällig',
 };
 
 export const LA: UiStrings = {
@@ -72,6 +84,12 @@ export const LA: UiStrings = {
   statusIntroduced: 'Discuntur',
   statusKnown: 'Firmata',
   settingsLangLabel: 'Lingua',
+  filterAll: 'Omnia',
+  searchVocab: 'Vocabulum quaerere…',
+  sortFreq: 'Ordo',
+  sortRecent: 'Recens',
+  noVocabFound: 'Nulla vocabula inventa',
+  dueToday: 'hodie reddenda',
 };
 
 export const STRINGS: Record<UiLang, UiStrings> = { de: DE, la: LA };

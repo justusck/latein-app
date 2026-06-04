@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { getApiKey, setApiKey, getElevenLabsKey, setElevenLabsKey } from '@/lib/secure';
+import { getElevenLabsKey, setElevenLabsKey } from '@/lib/secure';
 import { useStrings } from '@/hooks/use-strings';
 import { useApp, type Pronunciation, type UiLang } from '@/store/app';
 
@@ -16,25 +16,14 @@ export default function SettingsScreen() {
   const { pronunciation, setPronunciation, dailyGoalNew, setDailyGoalNew, retention, setRetention, uiLang, setUiLang } =
     useApp();
 
-  const [apiKey, setApiKeyState] = useState('');
-  const [savedKey, setSavedKey] = useState(false);
   const [elevenKey, setElevenKeyState] = useState('');
   const [savedElevenKey, setSavedElevenKey] = useState(false);
 
   useEffect(() => {
-    getApiKey().then((k) => {
-      if (k) { setApiKeyState(k); setSavedKey(true); }
-    });
     getElevenLabsKey().then((k) => {
       if (k) { setElevenKeyState(k); setSavedElevenKey(true); }
     });
   }, []);
-
-  const saveKey = async (value: string) => {
-    setApiKeyState(value);
-    await setApiKey(value);
-    setSavedKey(value.trim().length > 0);
-  };
 
   const saveElevenKey = async (value: string) => {
     setElevenKeyState(value);
@@ -44,108 +33,105 @@ export default function SettingsScreen() {
 
   return (
     <Screen scroll>
-      <SectionTitle theme={theme}>{t.settingsLangLabel}</SectionTitle>
-      <Card>
-        <Segmented<UiLang>
-          value={uiLang}
-          onChange={setUiLang}
-          options={[
-            { value: 'de', label: 'Deutsch' },
-            { value: 'la', label: 'Latina' },
-          ]}
-          theme={theme}
-        />
-      </Card>
+      {/* ── Language & Learning ──────────────────────────────────────── */}
+      <SettingsGroup title={t.settingsLangLabel} theme={theme}>
+        <Card>
+          <Segmented<UiLang>
+            value={uiLang}
+            onChange={setUiLang}
+            options={[
+              { value: 'de', label: 'Deutsch' },
+              { value: 'la', label: 'Latina' },
+            ]}
+            theme={theme}
+          />
+        </Card>
+      </SettingsGroup>
 
-      <SectionTitle theme={theme}>Anwendung (AI)</SectionTitle>
-      <Card style={{ gap: Spacing.two }}>
-        <Text style={[styles.label, { color: theme.text }]}>Anthropic API-Key</Text>
-        <Text style={[styles.help, { color: theme.textSecondary }]}>
-          Wird sicher im Schlüsselbund des Geräts gespeichert (nicht in der Datenbank). Nötig für
-          den AI-Chat auf der Anwendungsseite.
-        </Text>
-        <TextInput
-          value={apiKey}
-          onChangeText={saveKey}
-          placeholder="sk-ant-..."
-          placeholderTextColor={theme.textSecondary}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
-        />
-        {savedKey && (
-          <View style={styles.savedRow}>
-            <Ionicons name="checkmark-circle" size={16} color={theme.success} />
-            <Text style={[styles.help, { color: theme.success }]}>Key gespeichert</Text>
-          </View>
-        )}
-      </Card>
+      <SettingsGroup title="Tagesziel (neue Wörter)" theme={theme}>
+        <Card>
+          <Stepper value={dailyGoalNew} onChange={setDailyGoalNew} min={0} max={40} step={5} theme={theme} />
+        </Card>
+      </SettingsGroup>
 
-      <SectionTitle theme={theme}>Text-to-Speech (ElevenLabs)</SectionTitle>
-      <Card style={{ gap: Spacing.two }}>
-        <Text style={[styles.label, { color: theme.text }]}>ElevenLabs API-Key</Text>
-        <Text style={[styles.help, { color: theme.textSecondary }]}>
-          Wird sicher im Schlüsselbund gespeichert. Nötig für KI-Sprachausgabe im Magister und Reader.
-        </Text>
-        <TextInput
-          value={elevenKey}
-          onChangeText={saveElevenKey}
-          placeholder="sk_..."
-          placeholderTextColor={theme.textSecondary}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
-        />
-        {savedElevenKey && (
-          <View style={styles.savedRow}>
-            <Ionicons name="checkmark-circle" size={16} color={theme.success} />
-            <Text style={[styles.help, { color: theme.success }]}>Key gespeichert</Text>
-          </View>
-        )}
-      </Card>
+      <SettingsGroup title="Ziel-Behaltensrate (FSRS)" theme={theme}>
+        <Card>
+          <Segmented<number>
+            value={retention}
+            onChange={setRetention}
+            options={[
+              { value: 0.85, label: '85%' },
+              { value: 0.9, label: '90%' },
+              { value: 0.95, label: '95%' },
+            ]}
+            theme={theme}
+          />
+          <Text style={[styles.help, { color: theme.textSecondary, marginTop: Spacing.two }]}>
+            Höher = häufigere Wiederholungen, bessere Erinnerung. 90% ist der empfohlene Standard.
+          </Text>
+        </Card>
+      </SettingsGroup>
 
-      <SectionTitle theme={theme}>Aussprache</SectionTitle>
-      <Card>
-        <Segmented<Pronunciation>
-          value={pronunciation}
-          onChange={setPronunciation}
-          options={[
-            { value: 'classical', label: 'Klassisch' },
-            { value: 'ecclesiastical', label: 'Kirchlich' },
-          ]}
-          theme={theme}
-        />
-      </Card>
+      {/* ── AI & Speech ──────────────────────────────────────────────── */}
+      <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
-      <SectionTitle theme={theme}>Tagesziel (neue Wörter)</SectionTitle>
-      <Card>
-        <Stepper value={dailyGoalNew} onChange={setDailyGoalNew} min={0} max={40} step={5} theme={theme} />
-      </Card>
+      <SettingsGroup title="Text-to-Speech (ElevenLabs)" theme={theme}>
+        <Card style={{ gap: Spacing.two }}>
+          <Text style={[styles.label, { color: theme.text }]}>ElevenLabs API-Key</Text>
+          <Text style={[styles.help, { color: theme.textSecondary }]}>
+            Wird sicher im Schlüsselbund gespeichert. Nötig für KI-Sprachausgabe im Magister und Reader.
+          </Text>
+          <TextInput
+            value={elevenKey}
+            onChangeText={saveElevenKey}
+            placeholder="sk_..."
+            placeholderTextColor={theme.textSecondary}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+          />
+          {savedElevenKey && (
+            <View style={styles.savedRow}>
+              <Ionicons name="checkmark-circle" size={16} color={theme.success} />
+              <Text style={[styles.help, { color: theme.success }]}>Key gespeichert</Text>
+            </View>
+          )}
+        </Card>
+      </SettingsGroup>
 
-      <SectionTitle theme={theme}>Ziel-Behaltensrate (FSRS)</SectionTitle>
-      <Card>
-        <Segmented<number>
-          value={retention}
-          onChange={setRetention}
-          options={[
-            { value: 0.85, label: '85%' },
-            { value: 0.9, label: '90%' },
-            { value: 0.95, label: '95%' },
-          ]}
-          theme={theme}
-        />
-        <Text style={[styles.help, { color: theme.textSecondary, marginTop: Spacing.two }]}>
-          Höher = häufigere Wiederholungen, bessere Erinnerung. 90% ist der empfohlene Standard.
-        </Text>
-      </Card>
+      <SettingsGroup title="Aussprache" theme={theme}>
+        <Card>
+          <Segmented<Pronunciation>
+            value={pronunciation}
+            onChange={setPronunciation}
+            options={[
+              { value: 'classical', label: 'Klassisch' },
+              { value: 'ecclesiastical', label: 'Kirchlich' },
+            ]}
+            theme={theme}
+          />
+        </Card>
+      </SettingsGroup>
     </Screen>
   );
 }
 
-function SectionTitle({ children, theme }: { children: string; theme: ReturnType<typeof useTheme> }) {
-  return <Text style={[styles.section, { color: theme.textSecondary }]}>{children}</Text>;
+function SettingsGroup({
+  title,
+  theme,
+  children,
+}: {
+  title: string;
+  theme: ReturnType<typeof useTheme>;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.group}>
+      <Text style={[styles.section, { color: theme.textSecondary }]}>{title}</Text>
+      {children}
+    </View>
+  );
 }
 
 function Segmented<T extends string | number>({
@@ -209,7 +195,9 @@ function Stepper({
 }
 
 const styles = StyleSheet.create({
-  section: { fontSize: 14, fontWeight: '800', marginTop: Spacing.four, marginBottom: Spacing.two },
+  group: { marginBottom: Spacing.four },
+  divider: { height: StyleSheet.hairlineWidth, marginBottom: Spacing.four },
+  section: { fontSize: 13, fontWeight: '700', letterSpacing: 0.4, marginBottom: Spacing.two },
   label: { fontSize: 16, fontWeight: '700' },
   help: { fontSize: 12, lineHeight: 17 },
   input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: Radius.md, padding: Spacing.three, fontSize: 15 },

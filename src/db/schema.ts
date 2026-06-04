@@ -113,7 +113,9 @@ export const books = sqliteTable('books', {
   levelScore: real('level_score').notNull(), // numeric difficulty for sorting
   totalTokens: integer('total_tokens').notNull().default(0),
   uniqueLemmas: integer('unique_lemmas').notNull().default(0),
-  body: text('body').notNull(), // plain text
+  body: text('body').notNull().default(''), // plain text (only for TXT uploads)
+  chapters: text('chapters'), // JSON: string[] chapter titles (EPUB only)
+  filePath: text('file_path'), // persistent file path (EPUB only)
   builtin: integer('builtin', { mode: 'boolean' }).notNull().default(true),
   addedAt: integer('added_at').notNull(),
 });

@@ -3,7 +3,7 @@ import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 
-import { ProgressBar } from '@/components/ui/progress';
+import { AnimatedProgressBar } from '@/components/ui/animated-progress';
 import { Screen } from '@/components/ui/screen';
 import { useStrings } from '@/hooks/use-strings';
 import { useTheme } from '@/hooks/use-theme';
@@ -81,7 +81,7 @@ export default function VocabGroupScreen() {
               </Text>
             </View>
 
-            <ProgressBar progress={pct} height={8} color={theme.primary} />
+            <AnimatedProgressBar progress={pct} height={8} color={theme.primary} />
 
             <View style={styles.chipRow}>
               <StatusBadge label={t.statusNew} count={total - introduced} color={theme.textSecondary} />
