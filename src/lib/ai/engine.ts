@@ -9,6 +9,7 @@ const MODEL_URL = `https://huggingface.co/${MODEL_REPO}/resolve/main/${MODEL_FIL
 
 const MODELS_DIR = `${FileSystem.documentDirectory}models/`;
 const MODEL_PATH = `${MODELS_DIR}${MODEL_FILENAME}`;
+const RESUME_PATH = `${MODELS_DIR}.resume.json`;
 
 /** Context window size — keep conservative for mobile. */
 const N_CTX = 4096;
@@ -18,15 +19,27 @@ export type EngineState = 'unloaded' | 'downloading' | 'loading' | 'ready' | 'er
 
 export type EngineStatus = {
   state: EngineState;
-  downloadProgress: number; // 0..1
+  downloadProgress: number;   // 0..1
+  downloadedBytes: number;
+  totalBytes: number;
+  bytesPerSecond: number;
   error?: string;
+};
+
+const EMPTY_STATUS: EngineStatus = {
+  state: 'unloaded',
+  downloadProgress: 0,
+  downloadedBytes: 0,
+  totalBytes: 0,
+  bytesPerSecond: 0,
 };
 
 type StatusListener = (status: EngineStatus) => void;
 
-let status: EngineStatus = { state: 'unloaded', downloadProgress: 0 };
+let status: EngineStatus = { ...EMPTY_STATUS };
 const listeners = new Set<StatusListener>();
 let ctx: LlamaContext | null = null;
+let downloadTask: FileSystem.DownloadResumable | null = null;
 
 function emit() {
   const snap = { ...status };
@@ -55,38 +68,100 @@ async function ensureModelsDir() {
   }
 }
 
-/** Download the GGUF model from HuggingFace with progress tracking. */
+/** Save download pause state so we can resume later. */
+async function savePauseState(state: { resumeData?: string; url: string }) {
+  await ensureModelsDir();
+  await FileSystem.writeAsStringAsync(
+    RESUME_PATH,
+    JSON.stringify({ resumeData: state.resumeData, url: state.url, savedAt: Date.now() }),
+  );
+}
+
+/** Load saved resume data if it exists and is not stale (>7 days). */
+async function loadResumeData(): Promise<string | null> {
+  try {
+    const info = await FileSystem.getInfoAsync(RESUME_PATH);
+    if (!info.exists) return null;
+    const raw = await FileSystem.readAsStringAsync(RESUME_PATH);
+    const parsed = JSON.parse(raw) as { resumeData: string; savedAt: number };
+    if (Date.now() - parsed.savedAt > 7 * 86400_000) {
+      await FileSystem.deleteAsync(RESUME_PATH, { idempotent: true });
+      return null;
+    }
+    return parsed.resumeData || null;
+  } catch {
+    return null;
+  }
+}
+
+async function clearResumeData() {
+  await FileSystem.deleteAsync(RESUME_PATH, { idempotent: true });
+}
+
+/** Download the GGUF model from HuggingFace with resume support and speed tracking. */
 async function downloadModel(): Promise<string> {
   await ensureModelsDir();
 
+  // Already fully downloaded?
   const fileInfo = await FileSystem.getInfoAsync(MODEL_PATH);
   if (fileInfo.exists && fileInfo.size && fileInfo.size > 1_000_000_000) {
-    // Model already downloaded — skip re-download.
     return MODEL_PATH;
   }
 
-  setState({ state: 'downloading', downloadProgress: 0 });
+  setState({ state: 'downloading', downloadProgress: 0, downloadedBytes: 0, totalBytes: 0, bytesPerSecond: 0 });
 
-  const downloadResumable = FileSystem.createDownloadResumable(
+  // Try to resume a previous partial download.
+  const resumeData = await loadResumeData();
+  let lastBytes = fileInfo.exists ? fileInfo.size ?? 0 : 0;
+  let lastTime = Date.now();
+
+  downloadTask = FileSystem.createDownloadResumable(
     MODEL_URL,
     MODEL_PATH,
     {},
     (progress) => {
-      const pct = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
-      setState({ downloadProgress: pct });
+      const now = Date.now();
+      const dt = Math.max((now - lastTime) / 1000, 0.5);
+      const db = progress.totalBytesWritten - lastBytes;
+      const bps = db / dt;
+      lastBytes = progress.totalBytesWritten;
+      lastTime = now;
+
+      const pct = progress.totalBytesExpectedToWrite > 0
+        ? progress.totalBytesWritten / progress.totalBytesExpectedToWrite
+        : 0;
+
+      setState({
+        downloadProgress: pct,
+        downloadedBytes: progress.totalBytesWritten,
+        totalBytes: progress.totalBytesExpectedToWrite,
+        bytesPerSecond: Math.max(0, bps),
+      });
     },
+    resumeData ?? undefined,
   );
 
   try {
-    const result = await downloadResumable.downloadAsync();
+    const result = await downloadTask.downloadAsync();
+    downloadTask = null;
+
     if (!result || result.status !== 200) {
       throw new Error(`Download fehlgeschlagen (Status ${result?.status ?? 'unbekannt'})`);
     }
-    setState({ downloadProgress: 1 });
+
+    await clearResumeData();
+    setState({ downloadProgress: 1, bytesPerSecond: 0 });
     return MODEL_PATH;
   } catch (e) {
-    // Clean up partial download
-    await FileSystem.deleteAsync(MODEL_PATH, { idempotent: true });
+    // Save pause state so we can resume the download later.
+    const pstate = downloadTask?.savable();
+    downloadTask = null;
+
+    if (pstate) {
+      await savePauseState(pstate);
+    }
+
+    // Don't delete partial file — we'll resume next time.
     throw e;
   }
 }
@@ -105,12 +180,11 @@ export async function loadModel(): Promise<void> {
       {
         model: modelPath,
         n_ctx: N_CTX,
-        n_gpu_layers: 99,               // offload all layers to GPU if available
+        n_gpu_layers: 99,
         use_mlock: true,
         use_mmap: true,
       },
       (progress: number) => {
-        // Loading progress from llama.rn (0-100).
         if (progress >= 100) {
           setState({ state: 'ready' });
         }
@@ -125,8 +199,14 @@ export async function loadModel(): Promise<void> {
   }
 }
 
-/** Run a single-turn chat completion.
- *  `messages` follows OpenAI format: [{ role: 'system'|'user'|'assistant', content }]. */
+/** Delete partial download and start fresh. */
+export async function resetDownload(): Promise<void> {
+  await FileSystem.deleteAsync(MODEL_PATH, { idempotent: true });
+  await clearResumeData();
+  setState({ ...EMPTY_STATUS, state: 'unloaded' });
+}
+
+/** Run a single-turn chat completion. */
 export async function generateResponse(
   messages: Array<{ role: string; content: string }>,
 ): Promise<string> {
@@ -142,15 +222,14 @@ export async function generateResponse(
     stop: ['<end_of_turn>', '<eos>'],
   });
 
-  // result.content contains the parsed content (excluding reasoning/tool calls).
   return (result.content || result.text || '').trim();
 }
 
-/** Release the model from memory. Call when the app goes to background. */
+/** Release the model from memory. */
 export async function unloadModel(): Promise<void> {
   if (ctx) {
     await ctx.release();
     ctx = null;
   }
-  setState({ state: 'unloaded', downloadProgress: 0 });
+  setState({ ...EMPTY_STATUS, state: 'unloaded' });
 }

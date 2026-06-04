@@ -26,7 +26,7 @@ import { WordGlossPanel } from '@/components/ui/word-panel';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { AI_MODES, type AiMode, type ChatMessage, chat, latinPart } from '@/lib/ai';
-import { getEngineStatus, loadModel, onStatusChange, type EngineStatus } from '@/lib/ai/engine';
+import { getEngineStatus, loadModel, onStatusChange, resetDownload, type EngineStatus } from '@/lib/ai/engine';
 import { appendMessage, loadOrStart, startConversation, type Conversation } from '@/lib/ai/conversations';
 import { XP_AI_TURN } from '@/lib/gamification';
 import { buildKnowledgeContext } from '@/lib/knowledge';
@@ -234,6 +234,10 @@ export default function AiScreen() {
   // ── Model loading / error states ──────────────────────────────────────────
   if (engineStatus.state === 'unloaded' || engineStatus.state === 'downloading' || engineStatus.state === 'loading') {
     const pct = Math.round(engineStatus.downloadProgress * 100);
+    const mbDown = (engineStatus.downloadedBytes / 1_048_576).toFixed(0);
+    const mbTotal = (engineStatus.totalBytes / 1_048_576).toFixed(0);
+    const mbps = (engineStatus.bytesPerSecond / 1_048_576).toFixed(1);
+    const hasSpeed = engineStatus.bytesPerSecond > 100_000; // >100 KB/s
     return (
       <TabScreen title="Magister">
         <View style={styles.emptyState}>
@@ -250,15 +254,31 @@ export default function AiScreen() {
               : 'Modell wird initialisiert…'}
           </Text>
           {engineStatus.state === 'downloading' && (
-            <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
-              <View style={[styles.progressFill, { backgroundColor: theme.primary, width: `${Math.max(pct, 5)}%` }]} />
-            </View>
+            <>
+              <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
+                <View style={[styles.progressFill, { backgroundColor: theme.primary, width: `${Math.max(pct, 2)}%` }]} />
+              </View>
+              <Text style={[styles.progressText, { color: theme.textSecondary }]}>
+                {pct} % · {mbDown} / {mbTotal} MB
+                {hasSpeed ? ` · ${mbps} MB/s` : ''}
+              </Text>
+            </>
           )}
           <Text style={[styles.emptySub, { color: theme.textSecondary }]}>
             {engineStatus.state === 'downloading'
-              ? `Gemma 4 wird einmalig heruntergeladen (${pct} %). Das Modell läuft danach vollständig auf deinem Gerät — offline und privat.`
+              ? 'Gemma 4 wird einmalig heruntergeladen. Der Download läuft im Hintergrund weiter und wird bei Abbruch automatisch fortgesetzt.'
               : 'Das Modell wird in den Speicher geladen. Dies dauert nur einen Moment.'}
           </Text>
+          {engineStatus.state === 'downloading' && (
+            <Button
+              title="Download abbrechen & neu starten"
+              variant="ghost"
+              onPress={async () => {
+                await resetDownload();
+                loadModel().catch(() => {});
+              }}
+            />
+          )}
         </View>
       </TabScreen>
     );
@@ -728,5 +748,10 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: Radius.pill,
+  },
+  progressText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
   },
 });
