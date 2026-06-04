@@ -1,15 +1,25 @@
 name: Android APK
 
-# Baut eine installierbare Android-APK (Release, signiert mit einem im Lauf
-# erzeugten Keystore — keine Secrets nötig). Die APK liegt danach unter
-# "Artifacts" des Workflow-Laufs zum Download. Bei einem Tag v* wird zusätzlich
-# ein GitHub-Release mit der APK erstellt.
+# Baut eine installierbare, mit einem FESTEN Schlüssel signierte Android-APK.
+# Dadurch lassen sich neue Versionen über die alte installieren, ohne Daten zu
+# verlieren (gleiche Signatur). versionCode zählt automatisch hoch, damit
+# Obtainium/Android das Update erkennt.
+#
+# Signatur-Secrets (im Repo unter Settings → Secrets → Actions):
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+#   ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+#
+# Neue Version veröffentlichen:  git tag v1.0.1 && git push origin v1.0.1
+# → erzeugt ein GitHub-Release mit der APK (von Obtainium auto-erkannt).
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
+
+permissions:
+  contents: write # für das Anhängen der APK an ein Release
 
 jobs:
   build:
@@ -39,32 +49,45 @@ jobs:
       - name: Expo prebuild (android)
         run: npx expo prebuild --platform android --no-install
 
-      - name: Generate signing keystore
+      - name: Set app version
+        working-directory: android/app
         run: |
-          keytool -genkeypair -v \
-            -keystore "$GITHUB_WORKSPACE/android/app/release.keystore" \
-            -alias latina -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass latina-build -keypass latina-build \
-            -dname "CN=Latina, OU=App, O=Latina, L=NA, ST=NA, C=DE"
+          VC=${{ github.run_number }}
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then VN="${GITHUB_REF_NAME#v}"; else VN="0.0.${{ github.run_number }}"; fi
+          sed -i "s/versionCode [0-9]\+/versionCode ${VC}/" build.gradle
+          sed -i "s/versionName \"[^\"]*\"/versionName \"${VN}\"/" build.gradle
+          echo "versionCode=${VC}  versionName=${VN}"
 
-      - name: Build release APK
+      - name: Decode signing keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$GITHUB_WORKSPACE/android/app/release.keystore"
+
+      - name: Build signed release APK
         working-directory: android
         run: |
           ./gradlew assembleRelease --no-daemon \
             -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/android/app/release.keystore" \
-            -Pandroid.injected.signing.store.password=latina-build \
-            -Pandroid.injected.signing.key.alias=latina \
-            -Pandroid.injected.signing.key.password=latina-build
+            -Pandroid.injected.signing.store.password="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            -Pandroid.injected.signing.key.alias="${{ secrets.ANDROID_KEY_ALIAS }}" \
+            -Pandroid.injected.signing.key.password="${{ secrets.ANDROID_KEY_PASSWORD }}"
+
+      - name: Prepare APK name
+        id: apk
+        run: |
+          SRC=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          DST="latina-${GITHUB_REF_NAME}.apk"
+          cp "$SRC" "$DST"
+          echo "path=$DST" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: latina-android-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
 
       - name: Attach APK to GitHub Release (on tag)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/release/*.apk
+          files: ${{ steps.apk.outputs.path }}
+          generate_release_notes: true
