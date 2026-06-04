@@ -50,3 +50,6 @@ example
 # agent / editor local state
 .claude/
 .impeccable/
+PRODUCT.md 
+DESIGN.md 
+

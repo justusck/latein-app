@@ -60,7 +60,22 @@ jobs:
       - name: Decode signing keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$GITHUB_WORKSPACE/android/app/release.keystore"
 
-      - name: Build signed release APK
+      - name: Enable ABI splits (kleinere APKs pro Architektur)
+        working-directory: android/app
+        run: |
+          # Fügt splits { abi { ... } } in den android { } Block des build.gradle ein.
+          # Dadurch entstehen separate APKs pro CPU-Architektur statt eines fetten Universal-APKs.
+          sed -i '/^android {/a\
+            \    splits {\
+            \        abi {\
+            \            reset()\
+            \            enable true\
+            \            universalApk false\
+            \            include "arm64-v8a", "armeabi-v7a", "x86_64"\
+            \        }\
+            \    }' build.gradle
+
+      - name: Build signed release APKs
         working-directory: android
         run: |
           ./gradlew assembleRelease --no-daemon \
@@ -69,24 +84,27 @@ jobs:
             -Pandroid.injected.signing.key.alias="${{ secrets.ANDROID_KEY_ALIAS }}" \
             -Pandroid.injected.signing.key.password="${{ secrets.ANDROID_KEY_PASSWORD }}"
 
-      - name: Prepare APK name
+      - name: Prepare APKs
         id: apk
         run: |
-          SRC=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
-          DST="latina-${GITHUB_REF_NAME}.apk"
-          cp "$SRC" "$DST"
-          echo "path=$DST" >> "$GITHUB_OUTPUT"
+          mkdir -p apks
+          find android/app/build/outputs/apk/release -name '*.apk' | while read f; do
+            arch=$(echo "$f" | grep -oP '(arm64-v8a|armeabi-v7a|x86_64)')
+            dst="latina-${GITHUB_REF_NAME}-${arch}.apk"
+            cp "$f" "apks/$dst"
+          done
+          ls -lh apks/
 
-      - name: Upload APK artifact
+      - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: latina-android-apk
-          path: ${{ steps.apk.outputs.path }}
+          name: latina-android-apks
+          path: apks/*.apk
           if-no-files-found: error
 
-      - name: Attach APK to GitHub Release (on tag)
+      - name: Attach APKs to GitHub Release (on tag)
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.apk.outputs.path }}
+          files: apks/*.apk
           generate_release_notes: true
