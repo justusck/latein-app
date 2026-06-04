@@ -14,9 +14,8 @@ name: Android APK
 
 on:
   push:
-    branches: [main]
-    tags: ['v*']
-  workflow_dispatch:
+    tags: ['v*'] # nur Versions-Tags bauen (ein Build pro Release)
+  workflow_dispatch: # manueller Start über Actions → Run workflow
 
 permissions:
   contents: write # für das Anhängen der APK an ein Release
