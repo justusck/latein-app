@@ -1,8 +1,10 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   Keyboard,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -12,21 +14,12 @@ import {
 import { SearchBar } from '@/components/ui/search-bar';
 import { ParadigmTable } from '@/components/paradigm-table';
 import { TabScreen } from '@/components/ui/tab-screen';
-import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
+import { ViaSacraPath } from '@/components/ui/via-sacra-path';
 import { PARADIGMS } from '@/data/paradigms';
 import { useTheme } from '@/hooks/use-theme';
 import { getTopicsWithProgress, type TopicWithProgress } from '@/lib/grammar';
 import { lookupWord, searchLemmas, type LookupResult } from '@/lib/latin/inflect';
-
-// ── Stage metadata ────────────────────────────────────────────────────────
-
-const STAGE_LABELS: Record<string, string> = {
-  foundations: 'Grundlagen',
-  morphology: 'Formenlehre',
-  syntax: 'Syntax',
-  advanced: 'Fortgeschritten',
-};
-const STAGE_ORDER = ['foundations', 'morphology', 'syntax', 'advanced'];
 
 // ── Segmented control ─────────────────────────────────────────────────────
 
@@ -48,7 +41,12 @@ function SegmentedControl({
         return (
           <Pressable
             key={label}
-            onPress={() => onChange(i)}
+            onPress={() => {
+              if (Platform.OS !== 'web') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              }
+              onChange(i);
+            }}
             style={[
               segStyles.segment,
               on && { backgroundColor: theme.card, borderColor: theme.border },
@@ -102,9 +100,15 @@ function SuggestionRow({
   onPress: () => void;
   theme: ReturnType<typeof useTheme>;
 }) {
+  const handlePress = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    onPress();
+  };
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       style={({ pressed }) => [
         suggStyles.row,
         { backgroundColor: pressed ? theme.backgroundSelected : 'transparent' },
@@ -224,6 +228,9 @@ export default function GrammarScreen() {
   };
 
   const toggleParadigm = (id: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
     setExpandedParadigms((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -232,14 +239,8 @@ export default function GrammarScreen() {
     });
   };
 
-  const headerRight = (
-    <Pressable onPress={() => router.push('/profile')} hitSlop={12}>
-      <MaterialCommunityIcons name="shield-account-outline" size={24} color={theme.textSecondary} />
-    </Pressable>
-  );
-
   return (
-    <TabScreen title="Grammatik" headerRight={headerRight}>
+    <TabScreen title="Grammatik">
       <SegmentedControl
         options={['Lernpfad', 'Nachschlagen']}
         active={tab}
@@ -250,84 +251,8 @@ export default function GrammarScreen() {
       <View style={{ height: Spacing.four }} />
 
       {tab === 0 ? (
-        /* ──────────── LERNPFAD ──────────── */
-        STAGE_ORDER.map((stage) => {
-          const stageTopics = topics.filter((t) => t.topic.stage === stage);
-          const stageParadigms = paradigmsByStage.get(stage) ?? [];
-          if (stageTopics.length === 0 && stageParadigms.length === 0) return null;
-
-          const firstUnlocked = stageTopics.find((t) => t.unlocked && !t.completed);
-
-          return (
-            <View key={stage} style={styles.stage}>
-              <View style={styles.stageHeader}>
-                <Text style={[styles.stageLabel, { color: theme.primary }]}>
-                  {STAGE_LABELS[stage] ?? stage}
-                </Text>
-                <View style={[styles.stageMeta, { backgroundColor: theme.muted }]}>
-                  <Text style={[styles.stageMetaText, { color: theme.textSecondary }]}>
-                    {stageTopics.filter((t) => t.completed).length}/{stageTopics.length}
-                  </Text>
-                </View>
-              </View>
-
-              {stageTopics.map((t) => (
-                <Row
-                  key={t.topic.id}
-                  title={t.topic.title}
-                  subtitle={t.topic.summary ?? undefined}
-                  unlocked={t.unlocked}
-                  completed={t.completed}
-                  highlight={t === firstUnlocked}
-                  leading={
-                    <View
-                      style={[
-                        styles.leading,
-                        {
-                          backgroundColor: t.unlocked ? theme.primary : theme.muted,
-                        },
-                      ]}>
-                      {t.unlocked ? (
-                        <Text style={styles.leadingText}>{t.topic.orderIndex + 1}</Text>
-                      ) : (
-                        <Ionicons name="lock-closed" size={11} color={theme.textSecondary} />
-                      )}
-                    </View>
-                  }
-                  onPress={t.unlocked ? () => router.push(`/grammar/${t.topic.id}`) : undefined}
-                  theme={theme}
-                />
-              ))}
-
-              {stageParadigms.length > 0 && (
-                <>
-                  <Text style={[styles.trainerEyebrow, { color: theme.textSecondary }]}>
-                    Formentrainer
-                  </Text>
-                  {stageParadigms.map((p) => (
-                    <Row
-                      key={`trainer-${p.id}`}
-                      title={p.title}
-                      subtitle={p.subtitle}
-                      unlocked
-                      leading={
-                        <View style={[styles.leading, { backgroundColor: theme.purple }]}>
-                          <Ionicons
-                            name={p.kind === 'noun' ? 'layers-outline' : 'flash-outline'}
-                            size={14}
-                            color="#fff"
-                          />
-                        </View>
-                      }
-                      onPress={() => router.push(`/trainer/${p.id}`)}
-                      theme={theme}
-                    />
-                  ))}
-                </>
-              )}
-            </View>
-          );
-        })
+        /* ──────────── LERNPFAD / VIA SACRA ──────────── */
+        <ViaSacraPath topics={topics} paradigmsByStage={paradigmsByStage} />
       ) : (
         /* ──────────── NACHSCHLAGEN ──────────── */
         <>
@@ -413,6 +338,9 @@ export default function GrammarScreen() {
                       <Pressable
                         onPress={(e) => {
                           e.stopPropagation?.();
+                          if (Platform.OS !== 'web') {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                          }
                           router.push(`/trainer/${p.id}`);
                         }}
                         hitSlop={10}
@@ -470,6 +398,9 @@ export default function GrammarScreen() {
                       <Pressable
                         onPress={(e) => {
                           e.stopPropagation?.();
+                          if (Platform.OS !== 'web') {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                          }
                           router.push(`/trainer/${p.id}`);
                         }}
                         hitSlop={10}
@@ -496,120 +427,9 @@ export default function GrammarScreen() {
   );
 }
 
-// ── Row (shared by Lernpfad) ──────────────────────────────────────────────
-
-function Row({
-  title,
-  subtitle,
-  unlocked,
-  completed,
-  highlight,
-  leading,
-  onPress,
-  theme,
-}: {
-  title: string;
-  subtitle?: string;
-  unlocked?: boolean;
-  completed?: boolean;
-  highlight?: boolean;
-  leading: React.ReactNode;
-  onPress?: () => void;
-  theme: ReturnType<typeof useTheme>;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={!onPress}
-      style={({ pressed }) => [
-        styles.row,
-        highlight && { backgroundColor: theme.primary + '0A' },
-        pressed && onPress && { opacity: 0.6 },
-      ]}>
-      {leading}
-
-      <View style={styles.rowBody}>
-        <Text
-          style={[styles.rowTitle, { color: unlocked === false ? theme.textSecondary : theme.text }]}
-          numberOfLines={1}>
-          {title}
-        </Text>
-        {subtitle ? (
-          <Text style={[styles.rowSub, { color: theme.textSecondary }]} numberOfLines={1}>
-            {subtitle}
-          </Text>
-        ) : null}
-      </View>
-
-      {completed ? (
-        <Ionicons name="checkmark-circle" size={18} color={theme.accent} />
-      ) : unlocked === false ? null : onPress ? (
-        <Ionicons name="chevron-forward" size={14} color={theme.border} />
-      ) : null}
-    </Pressable>
-  );
-}
-
 // ── Styles ────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  // Stage sections
-  stage: { marginBottom: Spacing.five },
-  stageHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.two,
-  },
-  stageLabel: {
-    fontFamily: Fonts.serif,
-    fontSize: 18,
-    letterSpacing: 0.3,
-  },
-  stageMeta: {
-    paddingHorizontal: Spacing.two,
-    paddingVertical: 2,
-    borderRadius: Radius.pill,
-  },
-  stageMetaText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-
-  // Rows (topics & trainers)
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingVertical: 12,
-    paddingHorizontal: Spacing.three,
-    marginHorizontal: -Spacing.three,
-    borderRadius: Radius.md,
-  },
-  leading: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  leadingText: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  rowBody: { flex: 1 },
-  rowTitle: { fontSize: 15, fontWeight: '700' },
-  rowSub: { fontSize: 12, marginTop: 1 },
-
-  // Trainer eyebrow
-  trainerEyebrow: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginTop: Spacing.two,
-    marginBottom: Spacing.one,
-    paddingLeft: Spacing.three,
-  },
-
   // Nachschlagen: search suggestions
   suggPanel: {
     borderWidth: StyleSheet.hairlineWidth,

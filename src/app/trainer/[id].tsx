@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { TriumphOverlay, type TriumphData } from '@/components/effects/triumph-overlay';
 import { Button } from '@/components/ui/button';
@@ -113,7 +114,15 @@ export default function TrainerScreen() {
                     style={[styles.input, { color: showAnswers && !ok ? theme.danger : theme.text, borderColor }]}
                   />
                   {showAnswers && (
-                    <Pressable onPress={() => speakLatin(correct, pronunciation)} hitSlop={6} style={styles.speak}>
+                    <Pressable
+                      onPress={() => {
+                        if (Platform.OS !== 'web') {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                        }
+                        speakLatin(correct, pronunciation);
+                      }}
+                      hitSlop={6}
+                      style={styles.speak}>
                       <Ionicons name="volume-medium" size={14} color={theme.primary} />
                     </Pressable>
                   )}

@@ -46,7 +46,7 @@ export function Button({
 
   const handlePress = () => {
     if (haptic && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     }
     onPress();
   };

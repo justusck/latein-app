@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ParadigmTable } from '@/components/paradigm-table';
 import { Button } from '@/components/ui/button';
@@ -116,6 +117,9 @@ export default function GrammarLesson() {
 
   const pick = (opt: string) => {
     if (graded) return;
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
     setPicked(opt);
     settle(opt === card.answer);
   };

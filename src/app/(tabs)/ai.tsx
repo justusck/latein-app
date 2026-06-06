@@ -1,4 +1,5 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -20,7 +21,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { FadeInView } from '@/components/ui/fade-in';
-import { LatinText } from '@/components/ui/latin-text';
+import { LatinMarkdown } from '@/components/ui/latin-markdown';
 import { TabScreen } from '@/components/ui/tab-screen';
 import { WordGlossPanel } from '@/components/ui/word-panel';
 import { Radius, Spacing } from '@/constants/theme';
@@ -149,6 +150,9 @@ export default function AiScreen() {
   };
 
   const scrollToIndex = (i: number) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
     pagerRef.current?.scrollTo({ x: i * pageWidth, animated: true });
     setActiveIndex(i);
   };
@@ -192,6 +196,7 @@ export default function AiScreen() {
         history,
         pronunciation,
         characterPrompt: mode === 'roleplay' ? characterPrompt : undefined,
+        customPrompt: kvGet('ai_custom_prompt') ?? undefined,
       });
       appendMessage(st.conv.id, 'assistant', reply);
       setStates((prev) => {
@@ -215,6 +220,9 @@ export default function AiScreen() {
   };
 
   const newChat = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
     const mode = activeMode;
     setStates((prev) => ({
       ...prev,
@@ -301,17 +309,8 @@ export default function AiScreen() {
     );
   }
 
-  const headerRight = (
-    <Pressable onPress={() => router.push('/profile')} hitSlop={12}>
-      <MaterialCommunityIcons name="shield-account-outline" size={24} color={theme.textSecondary} />
-    </Pressable>
-  );
-
-  // ── Main UI ───────────────────────────────────────────────────────────────
-  // Android: native adjustResize handles keyboard (KeyboardAvoidingView would double-adjust).
-  // iOS: KeyboardAvoidingView with padding behavior for the safe-area + tab bar.
   const mainContent = (
-    <TabScreen title="Magister" headerRight={headerRight} scroll={false} noBottomPadding>
+    <TabScreen title="Magister" scroll={false} noBottomPadding>
         {/* Action bar */}
         <View style={styles.actionBar}>
           <View style={styles.actionBarLeft}>
@@ -320,7 +319,12 @@ export default function AiScreen() {
             </Text>
             {activeMode === 'roleplay' && (
               <Pressable
-                onPress={() => setShowCharEditor((v) => !v)}
+                onPress={() => {
+                  if (Platform.OS !== 'web') {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  }
+                  setShowCharEditor((v) => !v);
+                }}
                 style={({ pressed }) => [
                   styles.charBtn,
                   {
@@ -487,7 +491,12 @@ export default function AiScreen() {
             style={[styles.input, { color: theme.text, backgroundColor: theme.muted }]}
           />
           <Pressable
-            onPress={send}
+            onPress={() => {
+              if (Platform.OS !== 'web') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+              }
+              send();
+            }}
             disabled={!states[activeMode].input.trim() || sending}
             style={({ pressed }) => [
               styles.sendBtn,
@@ -558,23 +567,30 @@ function Bubble({
     );
   }
 
+  const handleSpeak = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    onSpeak();
+  };
+
   return (
     <Pressable
-      onPress={onSpeak}
+      onPress={handleSpeak}
       style={({ pressed }) => [
         styles.bubble,
         styles.assistantBubble,
         { backgroundColor: theme.card, borderColor: theme.border, opacity: pressed ? 0.85 : 1 },
       ]}
     >
-      <LatinText
-        text={message.content}
+      <LatinMarkdown
         knownKeys={knownKeys}
         dictKeys={dictKeys}
         onWordPress={onWordPress}
         theme={theme}
-        style={[styles.bubbleText, { color: theme.text }]}
-      />
+      >
+        {message.content}
+      </LatinMarkdown>
       <View style={styles.speakRow}>
         <Ionicons name="mic-outline" size={13} color={theme.primary} />
         <Text style={[styles.speakHint, { color: theme.primary }]}>Antippen zum Anhören</Text>

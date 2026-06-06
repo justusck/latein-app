@@ -1,7 +1,8 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 
+import { TabBarButton } from '@/components/ui/tab-bar-button';
+import { TabBarIcon } from '@/components/ui/tab-bar-icon';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function TabsLayout() {
@@ -12,6 +13,7 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: theme.primary,
         tabBarInactiveTintColor: theme.textSecondary,
+        tabBarButton: (props) => <TabBarButton {...props} />,
         tabBarStyle: {
           backgroundColor: theme.background,
           borderTopColor: theme.border,
@@ -41,8 +43,8 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Vokabeln',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'bookmark' : 'bookmark-outline'} size={size} color={color} />
+          tabBarIcon: ({ size, focused }) => (
+            <TabBarIcon baseName="bookmark" size={size} focused={focused} />
           ),
         }}
       />
@@ -50,8 +52,8 @@ export default function TabsLayout() {
         name="grammar"
         options={{
           title: 'Grammatik',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'school' : 'school-outline'} size={size} color={color} />
+          tabBarIcon: ({ size, focused }) => (
+            <TabBarIcon baseName="school" size={size} focused={focused} />
           ),
         }}
       />
@@ -59,8 +61,8 @@ export default function TabsLayout() {
         name="ai"
         options={{
           title: 'Magister',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'mic' : 'mic-outline'} size={size} color={color} />
+          tabBarIcon: ({ size, focused }) => (
+            <TabBarIcon baseName="mic" size={size} focused={focused} />
           ),
         }}
       />
@@ -68,8 +70,8 @@ export default function TabsLayout() {
         name="library"
         options={{
           title: 'Lesen',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'book' : 'book-outline'} size={size} color={color} />
+          tabBarIcon: ({ size, focused }) => (
+            <TabBarIcon baseName="book" size={size} focused={focused} />
           ),
         }}
       />

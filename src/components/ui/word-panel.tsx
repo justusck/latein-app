@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import { Card } from '@/components/ui/card';
 import { Radius, Spacing } from '@/constants/theme';
@@ -43,13 +44,27 @@ export function WordGlossPanel({
     <Card style={[styles.panel, { backgroundColor: theme.card, borderColor: theme.border }, containerStyle]}>
       {/* Header: word + speak + close */}
       <View style={styles.header}>
-        <Pressable onPress={() => onSpeak(raw)} style={styles.wordRow}>
+        <Pressable
+          onPress={() => {
+            if (Platform.OS !== 'web') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            }
+            onSpeak(raw);
+          }}
+          style={styles.wordRow}>
           <Text style={[styles.word, { color: theme.text }]}>
             {lemma?.lemma ?? raw}
           </Text>
           <Ionicons name="volume-medium" size={20} color={theme.primary} />
         </Pressable>
-        <Pressable onPress={onClose} hitSlop={10}>
+        <Pressable
+          onPress={() => {
+            if (Platform.OS !== 'web') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            }
+            onClose();
+          }}
+          hitSlop={10}>
           <Ionicons name="close" size={24} color={theme.textSecondary} />
         </Pressable>
       </View>
@@ -64,7 +79,12 @@ export function WordGlossPanel({
           <Text style={[styles.gloss, { color: theme.primary }]}>{lemma.glossDe}</Text>
           {onAddToVocab ? (
             <Pressable
-              onPress={onAddToVocab}
+              onPress={() => {
+                if (Platform.OS !== 'web') {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                }
+                onAddToVocab();
+              }}
               disabled={added}
               style={({ pressed }) => [
                 styles.addBtn,

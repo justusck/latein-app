@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import { LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { GoldShimmer } from '@/components/effects/gold-shimmer';
 import { AnimatedProgressBar } from '@/components/ui/animated-progress';
@@ -170,7 +171,14 @@ export default function ProfileScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <Pressable onPress={() => router.push('/settings')} hitSlop={12}>
+        <Pressable
+          onPress={() => {
+            if (Platform.OS !== 'web') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            }
+            router.push('/settings');
+          }}
+          hitSlop={12}>
           <Ionicons name="settings-outline" size={22} color={theme.textSecondary} />
         </Pressable>
       ),

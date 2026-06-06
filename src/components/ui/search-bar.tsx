@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { type ComponentProps } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -42,7 +43,12 @@ export function SearchBar({ value, onChangeText, onSubmit, onClear, placeholder,
       />
       {value.length > 0 && (
         <Pressable
-          onPress={() => (onClear ? onClear() : onChangeText(''))}
+          onPress={() => {
+            if (Platform.OS !== 'web') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            }
+            onClear ? onClear() : onChangeText('');
+          }}
           hitSlop={10}>
           <Ionicons name="close-circle" size={16} color={theme.textSecondary} />
         </Pressable>

@@ -14,41 +14,58 @@ export const AI_MODES: { id: AiMode; label: string; opener: string }[] = [
 ];
 
 const BASE_INSTRUCTIONS = [
-  'Du bist ein KI-Assistent in einer Latein-Lern-App.',
-  'Schreibe deine lateinischen Sätze KURZ und EINFACH. Nutze möglichst nur Wortschatz und',
-  'Grammatik, die der/die Lernende bereits beherrscht (siehe Kontext unten).',
-  'Antworte in 1–3 kurzen lateinischen Sätzen.',
-].join(' ');
+  'Du bist ein KI-Assistent in einer Latein-Lern-App namens „Latīna".',
+  'Dein Name ist „Magister".',
+  '',
+  'WICHTIGSTE REGELN (absolut bindend):',
+  '1. Gib NIEMALS deinen Gedankengang, Überlegungen oder „thinking"-Prozess aus.',
+  '   Schreibe NUR die direkte Antwort — keinen inneren Monolog, kein „Lass mich',
+  '   überlegen…", kein „Als KI…", keine Meta-Kommentare.',
+  '2. Formatiere deine Antworten mit Markdown: **fett**, *kursiv*, `Code`,',
+  '   Aufzählungen mit - oder 1., Absätze mit Leerzeilen.',
+  '3. Schreibe deine lateinischen Sätze KURZ und EINFACH. Nutze möglichst nur',
+  '   Wortschatz und Grammatik, die der/die Lernende bereits beherrscht',
+  '   (siehe Kontext unten).',
+].join('\n');
 
 const MODE_INSTRUCTIONS: Record<AiMode, string> = {
   chat:
-    'Führe ein natürliches, hilfreiches Gespräch auf Latein. Stelle leichte Rückfragen. ' +
-    'SCHREIBE NUR AUF LATEIN — keine deutschen Übersetzungen, keine Erklärungen auf Deutsch.',
+    'Führe ein natürliches, hilfreiches Gespräch auf Latein. Stelle leichte Rückfragen.\n' +
+    '⚠️ DEINE GESAMTE ANTWORT MUSS AUF LATEIN SEIN — jedes einzelne Wort.\n' +
+    'KEIN Deutsch, KEINE Übersetzungen in Klammern, KEINE Erklärungen.',
   roleplay:
-    'Du verkörperst einen Charakter. Bleibe vollständig und konsequent in deiner Rolle. ' +
-    'SCHREIBE NUR AUF LATEIN — keine deutschen Übersetzungen, keine Erklärungen auf Deutsch.',
+    'Verkörpere den unten beschriebenen Charakter. Bleibe vollständig und konsequent in deiner Rolle.\n' +
+    '⚠️ DEINE GESAMTE ANTWORT MUSS AUF LATEIN SEIN — jedes einzelne Wort.\n' +
+    'KEIN Deutsch, KEINE Regieanweisungen, KEINE Übersetzungen.',
   correction:
-    'Der/die Lernende schreibt lateinische Sätze. Korrigiere Fehler, lobe Gelungenes und ' +
-    'erkläre die Korrekturen kurz auf Deutsch.',
+    'Der/die Lernende schreibt lateinische Sätze. Korrigiere Fehler, lobe Gelungenes.\n' +
+    'Erkläre die Korrekturen kurz auf Deutsch. Formatiere so:\n' +
+    '**Fehler:** …\n**Korrektur:** …\n**Erklärung:** …',
 };
 
 function buildSystemPrompt(
   mode: AiMode,
   pronunciation: Pronunciation,
   characterPrompt?: string,
+  customPrompt?: string,
 ): string {
   const knowledge = buildKnowledgeContext().summary;
-  const extra =
-    mode === 'roleplay' && characterPrompt
-      ? `\n\nCharakterbeschreibung (deutsch):\n${characterPrompt}`
-      : '';
+  const extraParts: string[] = [];
+
+  if (mode === 'roleplay' && characterPrompt) {
+    extraParts.push(`Charakterbeschreibung (deutsch):\n${characterPrompt}`);
+  }
+
+  if (customPrompt && customPrompt.trim()) {
+    extraParts.push(`Zusätzliche Anweisungen des Nutzers:\n${customPrompt.trim()}`);
+  }
 
   return [
     BASE_INSTRUCTIONS,
-    `\nAussprache-Kontext: ${pronunciation === 'classical' ? 'klassisch' : 'kirchlich'}.`,
+    `\n\nAussprache-Kontext: ${pronunciation === 'classical' ? 'klassisch' : 'kirchlich'}.`,
     `\n\nMODUS: ${MODE_INSTRUCTIONS[mode]}`,
     `\n\n${knowledge}`,
-    extra,
+    extraParts.length ? `\n\n${extraParts.join('\n\n')}` : '',
   ].join('');
 }
 
@@ -57,6 +74,7 @@ export async function chat(opts: {
   history: ChatMessage[];
   pronunciation: Pronunciation;
   characterPrompt?: string;
+  customPrompt?: string;
 }): Promise<string> {
   // Ensure model is loaded (no-op if already ready).
   // loadModel handles download + init, idempotent.
@@ -73,7 +91,7 @@ export async function chat(opts: {
     });
   }
 
-  const systemPrompt = buildSystemPrompt(opts.mode, opts.pronunciation, opts.characterPrompt);
+  const systemPrompt = buildSystemPrompt(opts.mode, opts.pronunciation, opts.characterPrompt, opts.customPrompt);
 
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -86,12 +104,14 @@ export async function chat(opts: {
 // Re-export engine lifecycle functions so the UI can subscribe.
 export { loadModel, getEngineStatus, onStatusChange, unloadModel } from './engine';
 
-/** Extract just the Latin part (drop the "DE: …" helper line) for TTS. */
+/** Extract just the Latin part (drop the "DE: …" helper line) and strip Markdown for TTS. */
 export function latinPart(text: string): string {
   return text
     .split('\n')
     .filter((line) => !/^\s*(DE|de)\s*:/.test(line))
     .join(' ')
     .replace(/\([^)]*\)/g, '') // drop inline glosses
+    .replace(/[*_~`#]/g, '')   // drop Markdown formatting chars
+    .replace(/\s+/g, ' ')      // collapse whitespace
     .trim();
 }

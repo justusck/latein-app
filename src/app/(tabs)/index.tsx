@@ -1,9 +1,10 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { readAsStringAsync } from 'expo-file-system/legacy';
+import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { SearchBar } from '@/components/ui/search-bar';
 import { TabScreen } from '@/components/ui/tab-screen';
@@ -131,16 +132,10 @@ export default function VocabScreen() {
   const canStudy = due > 0 || newRemaining > 0;
   const totalToday = due + newRemaining;
 
-  const headerRight = (
-    <Pressable onPress={() => router.push('/profile')} hitSlop={12}>
-      <MaterialCommunityIcons name="shield-account-outline" size={24} color={theme.textSecondary} />
-    </Pressable>
-  );
-
   // ── Main render ────────────────────────────────────────────────────────
 
   return (
-    <TabScreen title={t.vocabTitle} headerRight={headerRight} scroll={false}>
+    <TabScreen title={t.vocabTitle} scroll={false}>
       <FlatList
         data={displayed}
         keyExtractor={(l) => String(l.id)}
@@ -149,54 +144,77 @@ export default function VocabScreen() {
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <View>
-            {/* ── Today summary + actions ────────────────────────────────── */}
-            <View style={styles.todayRow}>
-              <View style={styles.todayInfo}>
-                <Text style={[styles.todayCount, { color: theme.text }]}>{totalToday}</Text>
-                <Text style={[styles.todayLabel, { color: theme.textSecondary }]}>
-                  {t.cardsToday(totalToday)}
-                </Text>
-                <View style={styles.todayDetail}>
+            {/* ── Manuscript Card ────────────────────────────────── */}
+            <View style={[styles.manuscript, { backgroundColor: theme.card, borderColor: theme.primary }]}>
+              {/* Gold ornament */}
+              <View style={[styles.manuscriptOrnament, { backgroundColor: theme.accent }]} />
+
+              {/* Count + label */}
+              <Text style={[styles.manuscriptCount, { color: theme.text }]}>
+                {totalToday}
+              </Text>
+              <Text style={[styles.manuscriptLabel, { color: theme.textSecondary }]}>
+                {t.cardsToday(totalToday)}
+              </Text>
+
+              {/* Status chips */}
+              {(due > 0 || newRemaining > 0) && (
+                <View style={styles.manuscriptChips}>
                   {due > 0 && (
-                    <Text style={[styles.todayDetailText, { color: theme.primary }]}>
-                      {due} fällig
-                    </Text>
-                  )}
-                  {due > 0 && newRemaining > 0 && (
-                    <Text style={[styles.todayDetailSep, { color: theme.border }]}> · </Text>
+                    <View style={[styles.chip, { backgroundColor: theme.muted }]}>
+                      <View style={[styles.chipDot, { backgroundColor: theme.primary }]} />
+                      <Text style={[styles.chipText, { color: theme.primary }]}>
+                        {due} fällig
+                      </Text>
+                    </View>
                   )}
                   {newRemaining > 0 && (
-                    <Text style={[styles.todayDetailText, { color: theme.textSecondary }]}>
-                      {newRemaining} neu
-                    </Text>
+                    <View style={[styles.chip, { backgroundColor: theme.muted }]}>
+                      <View style={[styles.chipDot, { backgroundColor: theme.accent }]} />
+                      <Text style={[styles.chipText, { color: theme.accent }]}>
+                        {newRemaining} neu
+                      </Text>
+                    </View>
                   )}
                 </View>
-              </View>
+              )}
 
-              <View style={styles.todayActions}>
+              {/* Actions — both paths equally deliberate */}
+              <View style={styles.manuscriptActions}>
                 <Pressable
-                  onPress={() => router.push('/vocab-session')}
+                  onPress={() => {
+                    if (Platform.OS !== 'web') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+                    }
+                    router.push('/vocab-session');
+                  }}
                   disabled={!canStudy}
                   style={({ pressed }) => [
-                    styles.cta,
+                    styles.studyCta,
                     { backgroundColor: theme.primary },
                     !canStudy && { opacity: 0.35 },
-                    pressed && canStudy && { opacity: 0.85 },
+                    pressed && canStudy && { opacity: 0.88 },
                   ]}>
-                  <Text style={styles.ctaText}>
+                  <Ionicons name="book-outline" size={18} color="#fff" />
+                  <Text style={styles.studyCtaText}>
                     {canStudy ? t.startStudying : t.allDone}
                   </Text>
                 </Pressable>
 
                 <Pressable
-                  onPress={() => router.push('/vocab-session?mode=free')}
+                  onPress={() => {
+                    if (Platform.OS !== 'web') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                    }
+                    router.push('/vocab-session?mode=free');
+                  }}
                   style={({ pressed }) => [
-                    styles.freeBtn,
-                    { borderColor: theme.border },
-                    pressed && { opacity: 0.6 },
+                    styles.freeStudyCta,
+                    { borderColor: theme.accent },
+                    pressed && { backgroundColor: theme.accent + '10' },
                   ]}>
-                  <Ionicons name="flash-outline" size={13} color={theme.textSecondary} />
-                  <Text style={[styles.freeBtnText, { color: theme.textSecondary }]}>
+                  <Ionicons name="flash-outline" size={17} color={theme.accent} />
+                  <Text style={[styles.freeStudyCtaText, { color: theme.accent }]}>
                     {t.freePractice}
                   </Text>
                 </Pressable>
@@ -228,7 +246,12 @@ export default function VocabScreen() {
                 return (
                   <Pressable
                     key={f.key}
-                    onPress={() => setActiveFilter(f.key)}
+                    onPress={() => {
+                      if (Platform.OS !== 'web') {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                      }
+                      setActiveFilter(f.key);
+                    }}
                     style={({ pressed }) => [
                       styles.filterPill,
                       {
@@ -266,7 +289,12 @@ export default function VocabScreen() {
                     : `${counts[activeFilter]} ${t[FILTERS.find((f) => f.key === activeFilter)!.labelKey]}`}
               </Text>
               <Pressable
-                onPress={() => setSortBy((s) => (s === 'freq' ? 'recent' : 'freq'))}
+                onPress={() => {
+                  if (Platform.OS !== 'web') {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  }
+                  setSortBy((s) => (s === 'freq' ? 'recent' : 'freq'));
+                }}
                 hitSlop={8}
                 style={({ pressed }) => [styles.sortBtn, pressed && { opacity: 0.5 }]}>
                 <Text style={[styles.sortLabel, { color: theme.textSecondary }]}>
@@ -296,7 +324,12 @@ export default function VocabScreen() {
           <>
             {/* ── Import link ────────────────────────────────────────────── */}
             <Pressable
-              onPress={importDeck}
+              onPress={() => {
+                if (Platform.OS !== 'web') {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                }
+                importDeck();
+              }}
               disabled={importing}
               style={({ pressed }) => [styles.importLink, pressed && { opacity: 0.5 }]}>
               <Ionicons name="add-circle-outline" size={15} color={theme.textSecondary} />
@@ -383,64 +416,96 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.three,
   },
 
-  // ── Today summary (preserved) ──────────────────────────────────────────
-  todayRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: Spacing.four,
+  // ── Manuscript Card ──────────────────────────────────────────────────
+  manuscript: {
+    borderWidth: 1.5,
+    borderRadius: Radius.lg,
+    overflow: 'hidden',
+    marginBottom: Spacing.three,
   },
-  todayInfo: { flex: 1 },
-  todayCount: {
+  manuscriptOrnament: {
+    height: 2,
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.three,
+    borderRadius: 1,
+    opacity: 0.65,
+  },
+  manuscriptCount: {
     fontFamily: Fonts.serifBody,
-    fontSize: 40,
-    lineHeight: 44,
+    fontSize: 56,
+    lineHeight: 60,
     fontWeight: '400',
+    textAlign: 'center',
+    marginTop: Spacing.three,
   },
-  todayLabel: {
+  manuscriptLabel: {
     fontSize: 13,
-    fontWeight: '500',
-    marginTop: 2,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: Spacing.half,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
-  todayDetail: {
+  manuscriptChips: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: Spacing.one,
+    marginTop: Spacing.three,
+  },
+  chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
-  },
-  todayDetailText: { fontSize: 12, fontWeight: '600' },
-  todayDetailSep: { fontSize: 12, marginHorizontal: 4 },
-
-  todayActions: {
-    alignItems: 'flex-end',
-    gap: Spacing.one,
-  },
-  cta: {
-    paddingVertical: 12,
-    paddingHorizontal: Spacing.four,
+    gap: 5,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
     borderRadius: Radius.pill,
-    minWidth: 140,
-    alignItems: 'center',
   },
-  ctaText: {
+  chipDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  manuscriptActions: {
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.three,
+    marginTop: Spacing.four,
+    gap: Spacing.two,
+  },
+  studyCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.one + 2,
+    paddingVertical: 13,
+    borderRadius: Radius.pill,
+  },
+  studyCtaText: {
     color: '#fff',
     fontFamily: Fonts.serif,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.3,
   },
-  freeBtn: {
+  freeStudyCta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    justifyContent: 'center',
+    gap: Spacing.one + 2,
+    paddingVertical: 11,
     borderRadius: Radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1.5,
   },
-  freeBtnText: { fontSize: 11, fontWeight: '600' },
+  freeStudyCtaText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
 
   // ── Divider ────────────────────────────────────────────────────────────
-  divider: { height: StyleSheet.hairlineWidth, marginVertical: Spacing.four },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: Spacing.two },
 
   // ── Search ─────────────────────────────────────────────────────────────
   searchGap: {

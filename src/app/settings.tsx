@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
@@ -8,6 +9,7 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { getElevenLabsKey, setElevenLabsKey } from '@/lib/secure';
 import { useStrings } from '@/hooks/use-strings';
+import { kvGet, kvSet } from '@/lib/kv';
 import { useApp, type Pronunciation, type UiLang } from '@/store/app';
 
 export default function SettingsScreen() {
@@ -18,17 +20,24 @@ export default function SettingsScreen() {
 
   const [elevenKey, setElevenKeyState] = useState('');
   const [savedElevenKey, setSavedElevenKey] = useState(false);
+  const [customAiPrompt, setCustomAiPrompt] = useState('');
 
   useEffect(() => {
     getElevenLabsKey().then((k) => {
       if (k) { setElevenKeyState(k); setSavedElevenKey(true); }
     });
+    setCustomAiPrompt(kvGet('ai_custom_prompt') ?? '');
   }, []);
 
   const saveElevenKey = async (value: string) => {
     setElevenKeyState(value);
     await setElevenLabsKey(value);
     setSavedElevenKey(value.trim().length > 0);
+  };
+
+  const saveCustomAiPrompt = (value: string) => {
+    setCustomAiPrompt(value);
+    kvSet('ai_custom_prompt', value);
   };
 
   return (
@@ -100,6 +109,23 @@ export default function SettingsScreen() {
         </Card>
       </SettingsGroup>
 
+      <SettingsGroup title="Magister (KI) — Anweisungen" theme={theme}>
+        <Card style={{ gap: Spacing.two }}>
+          <Text style={[styles.help, { color: theme.textSecondary }]}>
+            Zusätzliche Anweisungen, die bei jeder Anfrage an die lokale KI gesendet werden.
+            Auf Deutsch formuliert. Z. B.: „Sprich immer im Plural", „Verwende nur Vokabeln aus Lektion 1–5".
+          </Text>
+          <TextInput
+            value={customAiPrompt}
+            onChangeText={saveCustomAiPrompt}
+            placeholder="Zusätzliche Anweisungen an die KI…"
+            placeholderTextColor={theme.textSecondary}
+            multiline
+            style={[styles.promptInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+          />
+        </Card>
+      </SettingsGroup>
+
       <SettingsGroup title="Aussprache" theme={theme}>
         <Card>
           <Segmented<Pronunciation>
@@ -152,7 +178,12 @@ function Segmented<T extends string | number>({
         return (
           <Pressable
             key={String(o.value)}
-            onPress={() => onChange(o.value)}
+            onPress={() => {
+              if (Platform.OS !== 'web') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              }
+              onChange(o.value);
+            }}
             style={[styles.segment, active && { backgroundColor: theme.primary }]}>
             <Text style={[styles.segmentText, { color: active ? '#fff' : theme.text }]}>{o.label}</Text>
           </Pressable>
@@ -180,7 +211,12 @@ function Stepper({
   return (
     <View style={styles.stepper}>
       <Pressable
-        onPress={() => onChange(Math.max(min, value - step))}
+        onPress={() => {
+          if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+          }
+          onChange(Math.max(min, value - step));
+        }}
         style={[styles.stepBtn, { backgroundColor: theme.muted }]}>
         <Ionicons name="remove" size={22} color={theme.text} />
       </Pressable>
@@ -201,6 +237,15 @@ const styles = StyleSheet.create({
   label: { fontSize: 16, fontWeight: '700' },
   help: { fontSize: 12, lineHeight: 17 },
   input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: Radius.md, padding: Spacing.three, fontSize: 15 },
+  promptInput: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
+    fontSize: 14,
+    minHeight: 100,
+    maxHeight: 200,
+    textAlignVertical: 'top',
+  },
   savedRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   segmented: { flexDirection: 'row', borderRadius: Radius.md, padding: 4, gap: 4 },
   segment: { flex: 1, paddingVertical: Spacing.two, borderRadius: Radius.sm, alignItems: 'center' },

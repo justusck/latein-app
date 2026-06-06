@@ -123,48 +123,32 @@ export default function VocabSession() {
       newRank: leveledUp ? rankForLevel(currentLevel.level).latin : undefined,
     };
 
+    const goHome = () => {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/(tabs)');
+      }
+    };
+
+    const playAgain = () => {
+      setQueue(getFreeReviewCards(40));
+      setIdx(0);
+      setRevealed(false);
+      setPicked(null);
+      setSessionXp(0);
+      setCorrect(0);
+      setTriumphVisible(false);
+      activityMarked.current = false;
+    };
+
     return (
-      <>
-        {/* Keep the session screen as background */}
-        <Screen>
-          <View style={styles.centerFill}>
-            <Ionicons name={isFree ? 'flash' : 'trophy'} size={64} color={theme.accent} />
-            <Text style={[styles.big, { color: theme.text }]}>
-              {isFree ? 'Runde geschafft!' : 'Session geschafft!'}
-            </Text>
-            <Card style={{ width: '100%', gap: Spacing.three }}>
-              <SummaryRow label="Karten" value={`${total}`} theme={theme} />
-              <SummaryRow label="Trefferquote" value={`${accuracy}%`} theme={theme} />
-              <SummaryRow label="XP erhalten" value={`+${sessionXp}`} theme={theme} accent />
-            </Card>
-            {isFree && (
-              <Button
-                title="Noch eine Runde"
-                onPress={() => {
-                  setQueue(getFreeReviewCards(40));
-                  setIdx(0);
-                  setRevealed(false);
-                  setPicked(null);
-                  setSessionXp(0);
-                  setCorrect(0);
-                  setTriumphVisible(false);
-                  activityMarked.current = false;
-                }}
-              />
-            )}
-            <Button
-              title="Fertig"
-              onPress={() => router.back()}
-              variant={isFree ? 'ghost' : undefined}
-            />
-          </View>
-        </Screen>
-        <TriumphOverlay
-          data={triumphData}
-          visible={triumphVisible}
-          onDismiss={() => router.back()}
-        />
-      </>
+      <TriumphOverlay
+        data={triumphData}
+        visible={triumphVisible}
+        onDismiss={goHome}
+        onPlayAgain={isFree ? playAgain : undefined}
+      />
     );
   }
 
@@ -190,6 +174,9 @@ export default function VocabSession() {
 
   const pickMc = (opt: string) => {
     if (picked) return;
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
     setPicked(opt);
     const isCorrect = opt === current.lemma.glossDe;
     setTimeout(() => grade(isCorrect ? AppRating.Good : AppRating.Again, isCorrect), 850);
@@ -213,7 +200,14 @@ export default function VocabSession() {
               <Text style={styles.tagText}>NEU</Text>
             </View>
           )}
-          <Pressable onPress={() => speakLatin(current.lemma.lemma, pronunciation)} style={styles.speakRow}>
+          <Pressable
+            onPress={() => {
+              if (Platform.OS !== 'web') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              }
+              speakLatin(current.lemma.lemma, pronunciation);
+            }}
+            style={styles.speakRow}>
             <Text style={[styles.lemma, { color: theme.text }]}>{current.lemma.lemma}</Text>
             <Ionicons name="volume-medium" size={22} color={theme.primary} />
           </Pressable>
@@ -283,30 +277,17 @@ function RatingButton({
   color: string;
   onPress: () => void;
 }) {
+  const handlePress = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    }
+    onPress();
+  };
   return (
-    <Pressable onPress={onPress} style={[styles.rating, { backgroundColor: color }]}>
+    <Pressable onPress={handlePress} style={[styles.rating, { backgroundColor: color }]}>
       <Text style={styles.ratingLabel}>{label}</Text>
       {sub ? <Text style={styles.ratingSub}>{sub}</Text> : null}
     </Pressable>
-  );
-}
-
-function SummaryRow({
-  label,
-  value,
-  theme,
-  accent,
-}: {
-  label: string;
-  value: string;
-  theme: ReturnType<typeof useTheme>;
-  accent?: boolean;
-}) {
-  return (
-    <View style={styles.summaryRow}>
-      <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>{label}</Text>
-      <Text style={[styles.summaryValue, { color: accent ? theme.accent : theme.text }]}>{value}</Text>
-    </View>
   );
 }
 
@@ -332,7 +313,4 @@ const styles = StyleSheet.create({
   rating: { flex: 1, paddingVertical: Spacing.two, borderRadius: Radius.md, alignItems: 'center' },
   ratingLabel: { color: '#fff', fontWeight: '800', fontSize: 13 },
   ratingSub: { color: '#fff', opacity: 0.85, fontSize: 10, fontWeight: '600', marginTop: 2 },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  summaryLabel: { fontSize: 15 },
-  summaryValue: { fontSize: 17, fontWeight: '800' },
 });

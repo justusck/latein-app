@@ -9,15 +9,24 @@ export type LevelInfo = {
   progress: number; // 0..1
 };
 
-/** Cumulative XP curve: each level costs ~25% more than the last. */
+/**
+ * Progressive XP curve: early levels come quickly, later ones get steeper.
+ *
+ * Level 1 costs 70 XP. Each level's cost grows by a factor that starts at
+ * ~1.27 and increases by ~0.018 per level, capped at 1.85×. This means:
+ *   - Levels 1–5 are easier than the old flat 1.25× curve
+ *   - Around level 10 the curves cross — after that it's harder
+ *   - Levels 20+ are significantly more demanding
+ */
 export function levelForXp(totalXp: number): LevelInfo {
   let level = 1;
-  let need = 100;
+  let need = 70;
   let remaining = Math.max(0, Math.floor(totalXp));
   while (remaining >= need) {
     remaining -= need;
     level += 1;
-    need = Math.round(need * 1.25);
+    const growth = Math.min(1.25 + level * 0.018, 1.85);
+    need = Math.round(need * growth);
   }
   return { level, xpIntoLevel: remaining, xpForNext: need, progress: remaining / need };
 }

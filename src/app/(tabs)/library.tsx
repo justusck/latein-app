@@ -1,9 +1,10 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { readAsStringAsync } from 'expo-file-system/legacy';
+import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { TabScreen } from '@/components/ui/tab-screen';
@@ -74,14 +75,8 @@ export default function LibraryScreen() {
   const unlocked = items.filter((i) => i.unlocked).length;
   const total = items.length;
 
-  const headerRight = (
-    <Pressable onPress={() => router.push('/profile')} hitSlop={12}>
-      <MaterialCommunityIcons name="shield-account-outline" size={24} color={theme.textSecondary} />
-    </Pressable>
-  );
-
   return (
-    <TabScreen title="Bibliotheca" headerRight={headerRight}>
+    <TabScreen title="Bibliotheca">
 
       {/* ── Summary + upload ── */}
       <View style={styles.summaryRow}>
@@ -94,7 +89,12 @@ export default function LibraryScreen() {
           <View />
         )}
         <Pressable
-          onPress={upload}
+          onPress={() => {
+            if (Platform.OS !== 'web') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+            }
+            upload();
+          }}
           disabled={busy}
           hitSlop={8}
           style={({ pressed }) => [
@@ -161,7 +161,12 @@ function BookRow({
 
   return (
     <Pressable
-      onPress={() => router.push(`/reader/${book.id}`)}
+      onPress={() => {
+        if (Platform.OS !== 'web') {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        }
+        router.push(`/reader/${book.id}`);
+      }}
       style={({ pressed }) => [
         styles.bookRow,
         !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
@@ -204,7 +209,15 @@ function BookRow({
           <Text style={[styles.levelText, { color: theme.text }]}>{book.level}</Text>
         </View>
         {!book.builtin && (
-          <Pressable onPress={() => onDelete(book.id, book.title)} hitSlop={8} style={{ marginLeft: 8 }}>
+          <Pressable
+            onPress={() => {
+              if (Platform.OS !== 'web') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              }
+              onDelete(book.id, book.title);
+            }}
+            hitSlop={8}
+            style={{ marginLeft: 8 }}>
             <Ionicons name="trash-outline" size={16} color={theme.textSecondary} />
           </Pressable>
         )}
