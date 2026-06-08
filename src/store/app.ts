@@ -5,6 +5,7 @@ import { dayKey, isYesterday, levelForXp } from '@/lib/gamification';
 import { kvGet, kvGetNum, kvSet } from '@/lib/kv';
 
 export type Pronunciation = 'classical' | 'ecclesiastical';
+export type ThemeMode = 'dark' | 'light' | 'system';
 export type { UiLang };
 
 const COINS_PER_LEVEL = 5;
@@ -20,6 +21,7 @@ type AppState = {
   retention: number;
   pronunciation: Pronunciation;
   uiLang: UiLang;
+  themeMode: ThemeMode;
 
   hydrate: () => void;
   awardXp: (n: number) => { leveledUp: boolean; newLevel: number };
@@ -30,6 +32,7 @@ type AppState = {
   setPronunciation: (p: Pronunciation) => void;
   setDailyGoalNew: (n: number) => void;
   setUiLang: (l: UiLang) => void;
+  setThemeMode: (m: ThemeMode) => void;
 };
 
 export const useApp = create<AppState>((set, get) => ({
@@ -43,6 +46,7 @@ export const useApp = create<AppState>((set, get) => ({
   retention: 0.9,
   pronunciation: 'classical',
   uiLang: 'de',
+  themeMode: 'system' as ThemeMode,
 
   hydrate: () => {
     set({
@@ -55,6 +59,7 @@ export const useApp = create<AppState>((set, get) => ({
       retention: kvGetNum('retention', 0.9),
       pronunciation: (kvGet('pronunciation') as Pronunciation) ?? 'classical',
       uiLang: (kvGet('uiLang') as UiLang) ?? 'de',
+      themeMode: (kvGet('themeMode') as ThemeMode) ?? 'system',
       hydrated: true,
     });
   },
@@ -107,5 +112,10 @@ export const useApp = create<AppState>((set, get) => ({
   setUiLang: (l) => {
     kvSet('uiLang', l);
     set({ uiLang: l });
+  },
+
+  setThemeMode: (m) => {
+    kvSet('themeMode', m);
+    set({ themeMode: m });
   },
 }));

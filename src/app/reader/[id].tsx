@@ -201,7 +201,7 @@ export default function Reader() {
   const webViewRef = useRef<WebView>(null);
   const txtScrollRef = useRef<ScrollView>(null);
 
-  // ── TXT scroll tracking ─────────────────────────────────────────────────
+  // ── Plain-text scroll tracking (builtin seed texts) ─────────────────────
   const txtScrollY = useRef(0);
   const onTxtScroll = useCallback((e: any) => {
     txtScrollY.current = e.nativeEvent.contentOffset.y;
@@ -210,7 +210,7 @@ export default function Reader() {
     if (id) kvSet(`scroll:${id}`, String(txtScrollY.current));
   }, [id]);
 
-  // Restore TXT scroll position
+  // Restore plain-text scroll position
   useEffect(() => {
     if (!isEpub && savedScroll && txtScrollRef.current) {
       const t = setTimeout(() => {
@@ -334,7 +334,7 @@ export default function Reader() {
         </View>
       ) : null}
 
-      {/* ── TXT: plain text (fallback for non-EPUB books) ── */}
+      {/* ── Plain text (builtin seed books without EPUB file) ── */}
       {!isEpub && (
         <ScrollView
           ref={txtScrollRef}

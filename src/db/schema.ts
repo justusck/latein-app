@@ -15,6 +15,13 @@ import {
 
 // --- Vocabulary content -----------------------------------------------------
 
+export const ankiPackages = sqliteTable('anki_packages', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  importedAt: integer('imported_at').notNull(),
+  wordCount: integer('word_count').notNull().default(0),
+});
+
 export const lemmas = sqliteTable('lemmas', {
   id: integer('id').primaryKey(),
   lemma: text('lemma').notNull(),
@@ -24,8 +31,7 @@ export const lemmas = sqliteTable('lemmas', {
   glossDe: text('gloss_de').notNull(),
   glossEn: text('gloss_en'),
   freqRank: integer('freq_rank'),
-  freqGroup: integer('freq_group'), // 1..N portions, ascending difficulty
-  semanticGroup: text('semantic_group'),
+  packageId: integer('package_id').references(() => ankiPackages.id),
 });
 
 // Surface form -> lemma, for tap-to-gloss and book coverage matching.
@@ -113,9 +119,9 @@ export const books = sqliteTable('books', {
   levelScore: real('level_score').notNull(), // numeric difficulty for sorting
   totalTokens: integer('total_tokens').notNull().default(0),
   uniqueLemmas: integer('unique_lemmas').notNull().default(0),
-  body: text('body').notNull().default(''), // plain text (only for TXT uploads)
+  body: text('body').notNull().default(''), // plain text (only for builtin seed texts)
   chapters: text('chapters'), // JSON: string[] chapter titles (EPUB only)
-  filePath: text('file_path'), // persistent file path (EPUB only)
+  filePath: text('file_path'), // persistent file path (EPUB uploads)
   builtin: integer('builtin', { mode: 'boolean' }).notNull().default(true),
   addedAt: integer('added_at').notNull(),
 });
@@ -185,6 +191,7 @@ export const aiMessages = sqliteTable('ai_messages', {
   createdAt: integer('created_at').notNull(),
 });
 
+export type AnkiPackage = typeof ankiPackages.$inferSelect;
 export type Lemma = typeof lemmas.$inferSelect;
 export type VocabCard = typeof vocabCards.$inferSelect;
 export type GrammarTopic = typeof grammarTopics.$inferSelect;

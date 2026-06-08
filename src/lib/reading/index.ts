@@ -32,7 +32,7 @@ export function glossForKey(key: string): Lemma | null {
 }
 
 /**
- * Import an uploaded text: tokenise, map forms → lemmas via the bundled
+ * Import an uploaded EPUB: tokenise, map forms → lemmas via the bundled
  * Form→Lemma table, precompute coverage counts, and store the book.
  */
 export function importBook(
@@ -55,8 +55,6 @@ export function importBook(
   const knownRatio = tokens.length ? matchedTokens / tokens.length : 0;
   const levelScore = Math.round((1 - knownRatio) * 8 + Math.min(2, tokens.length / 400) + 1);
 
-  const isEpub = !!opts?.filePath;
-
   const id = `user-${Date.now()}`;
   db.insert(books)
     .values({
@@ -69,8 +67,7 @@ export function importBook(
       levelScore,
       totalTokens: tokens.length,
       uniqueLemmas: counts.size,
-      // TXT: raw text in body. EPUB: body is empty, text lives in the file.
-      body: isEpub ? '' : body,
+      body: '',
       chapters: opts?.chapterTitles ? JSON.stringify(opts.chapterTitles) : null,
       filePath: opts?.filePath ?? null,
       builtin: false,

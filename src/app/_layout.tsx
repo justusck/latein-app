@@ -13,10 +13,13 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors, Spacing } from '@/constants/theme';
 import { initDatabase } from '@/db/client';
 import { seedDatabase } from '@/db/seed';
+import { getDailySaying } from '@/lib/sayings';
 import { useApp } from '@/store/app';
 
 export default function RootLayout() {
-  const scheme = useColorScheme() ?? 'light';
+  const systemScheme = useColorScheme() ?? 'light';
+  const themeMode = useApp((s) => s.themeMode);
+  const scheme = themeMode === 'system' ? systemScheme : themeMode;
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState<string>('');
   const [fontsLoaded] = useFonts({ LibreCaslonText_400Regular, LibreCaslonText_700Bold });
@@ -26,6 +29,8 @@ export default function RootLayout() {
       initDatabase();
       seedDatabase();
       useApp.getState().hydrate();
+      // Ensure widget has a current saying file
+      getDailySaying();
       setStatus('ready');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -67,12 +72,12 @@ export default function RootLayout() {
             name="vocab-session"
             options={{ headerShown: true, title: 'Vokabeltraining' }}
           />
-          <Stack.Screen name="vocab-group/[id]" options={{ headerShown: true, title: 'Vokabelgruppe' }} />
+
           <Stack.Screen name="grammar/[id]" options={{ headerShown: true, title: 'Lektion' }} />
           <Stack.Screen name="trainer/[id]" options={{ headerShown: true, title: 'Formentrainer' }} />
           <Stack.Screen name="reader/[id]" options={{ headerShown: true, title: 'Lesen' }} />
         </Stack>
-        <StatusBar style="auto" />
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       </ThemeProvider>
     </GestureHandlerRootView>
   );

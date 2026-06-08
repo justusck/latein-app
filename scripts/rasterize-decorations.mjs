@@ -25,6 +25,7 @@ const JOBS = [
   { in: 'temple.svg', out: 'temple.webp', renderWidth: 1024 },
   { in: 'statue-a.svg', out: 'statue-a.webp', renderWidth: 640 },
   { in: 'statue-b.svg', out: 'statue-b.webp', renderWidth: 640 },
+  { in: 'pillar.svg', out: 'pillar.webp', renderWidth: 640 },
 ];
 
 const kb = (bytes) => `${(bytes / 1024).toFixed(0)} KB`;

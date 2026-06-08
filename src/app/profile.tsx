@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { GoldShimmer } from '@/components/effects/gold-shimmer';
 import { AnimatedProgressBar } from '@/components/ui/animated-progress';
@@ -13,7 +13,7 @@ import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { levelForXp, rankForLevel } from '@/lib/gamification';
 import { getTopicsWithProgress } from '@/lib/grammar';
-import { getGroupProgress, getProfileStats, type DayCount, type ProfileStats } from '@/lib/vocab';
+import { getProfileStats, getVocabStats, type DayCount, type ProfileStats } from '@/lib/vocab';
 import { useApp } from '@/store/app';
 
 // ── Heatmap ───────────────────────────────────────────────────────────────
@@ -71,13 +71,19 @@ function HeatmapGrid({
   muted: string;
   textSecondary: string;
 }) {
+  const { width: windowWidth } = useWindowDimensions();
   const [cellSize, setCellSize] = useState(12);
   const weeks = useMemo(() => buildWeeks(dayCounts), [dayCounts]);
 
-  const onLayout = useCallback((e: LayoutChangeEvent) => {
-    const w = e.nativeEvent.layout.width - MONTH_W - 6 * GAP;
-    setCellSize(Math.max(10, Math.floor(w / 7)));
-  }, []);
+  // heatmapWrap has paddingHorizontal: Spacing.three — the grid must fit inside.
+  const onLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const PAD_H = Spacing.three; // 16px, matches heatmapWrap paddingHorizontal
+      const available = e.nativeEvent.layout.width - 2 * PAD_H;
+      setCellSize(Math.max(10, Math.floor((available - MONTH_W - 6 * GAP) / 7)));
+    },
+    [windowWidth],
+  );
 
   return (
     <View style={styles.heatmapWrap} onLayout={onLayout}>
@@ -163,7 +169,7 @@ function HeatmapGrid({
 export default function ProfileScreen() {
   const theme = useTheme();
   const navigation = useNavigation();
-  const { xp, coins, streakCount } = useApp();
+  const { xp, coins, streakCount, dailyGoalNew } = useApp();
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [grammarCompleted, setGrammarCompleted] = useState(0);
   const [grammarTotal, setGrammarTotal] = useState(0);
@@ -196,10 +202,10 @@ export default function ProfileScreen() {
 
   const lvl = levelForXp(xp);
   const rank = rankForLevel(lvl.level);
-  const groups = useMemo(() => getGroupProgress(), []);
-  const totalIntroduced = groups.reduce((s, g) => s + g.introduced, 0);
-  const totalKnown = groups.reduce((s, g) => s + g.known, 0);
-  const totalLemmas = groups.reduce((s, g) => s + g.total, 0);
+  const vocabStats = useMemo(() => getVocabStats(dailyGoalNew), [dailyGoalNew]);
+  const totalIntroduced = vocabStats.totalIntroduced;
+  const totalKnown = vocabStats.knownCount;
+  const totalLemmas = vocabStats.totalLemmas;
 
   const todayKey = useMemo(() => {
     const d = new Date();

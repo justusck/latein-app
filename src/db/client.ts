@@ -34,6 +34,13 @@ CREATE TABLE IF NOT EXISTS lemmas (
   semantic_group TEXT
 );
 
+CREATE TABLE IF NOT EXISTS anki_packages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  imported_at INTEGER NOT NULL,
+  word_count INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS word_forms (
   form TEXT NOT NULL,
   lemma_id INTEGER NOT NULL REFERENCES lemmas(id),
@@ -171,6 +178,7 @@ export function initDatabase(): void {
   for (const sql of [
     `ALTER TABLE books ADD COLUMN chapters TEXT;`,
     `ALTER TABLE books ADD COLUMN file_path TEXT;`,
+    `ALTER TABLE lemmas ADD COLUMN package_id INTEGER REFERENCES anki_packages(id);`,
   ]) {
     try { expoDb.execSync(sql); } catch { /* column exists → skip */ }
   }

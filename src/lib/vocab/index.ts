@@ -18,9 +18,6 @@ export type StudyCard = {
   isNew: boolean;
 };
 
-export type LemmaWithStatus = Lemma & {
-  status: 'new' | 'introduced' | 'known';
-};
 
 export type LemmaWithFullStatus = Lemma & {
   status: 'new' | 'introduced' | 'known';
@@ -101,54 +98,6 @@ export function getVocabStats(dailyGoalNew: number): VocabStats {
     newRemainingToday,
     availableNew,
   };
-}
-
-export type GroupProgress = {
-  group: number;
-  total: number;
-  introduced: number;
-  known: number;
-};
-
-/** Per frequency-group counts for the overview list. */
-export function getGroupProgress(): GroupProgress[] {
-  const rows = db
-    .select({
-      group: lemmas.freqGroup,
-      total: count(lemmas.id),
-      introduced: sql<number>`sum(case when ${vocabCards.lemmaId} is not null then 1 else 0 end)`,
-      known: sql<number>`sum(case when ${vocabCards.stability} >= ${KNOWN_STABILITY_DAYS} then 1 else 0 end)`,
-    })
-    .from(lemmas)
-    .leftJoin(vocabCards, eq(lemmas.id, vocabCards.lemmaId))
-    .groupBy(lemmas.freqGroup)
-    .orderBy(asc(lemmas.freqGroup))
-    .all();
-  return rows.map((r) => ({
-    group: r.group ?? 0,
-    total: Number(r.total),
-    introduced: Number(r.introduced ?? 0),
-    known: Number(r.known ?? 0),
-  }));
-}
-
-/** All lemmas in a frequency group with their FSRS status. */
-export function getLemmasByGroup(groupId: number): LemmaWithStatus[] {
-  const rows = db
-    .select()
-    .from(lemmas)
-    .leftJoin(vocabCards, eq(lemmas.id, vocabCards.lemmaId))
-    .where(eq(lemmas.freqGroup, groupId))
-    .orderBy(asc(lemmas.freqRank))
-    .all();
-  return rows.map((r) => {
-    const card = r.vocab_cards;
-    let status: LemmaWithStatus['status'] = 'new';
-    if (card) {
-      status = card.stability >= KNOWN_STABILITY_DAYS ? 'known' : 'introduced';
-    }
-    return { ...r.lemmas, status };
-  });
 }
 
 /** Create card rows for the next `n` unseen lemmas (frequency order). */

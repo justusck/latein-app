@@ -26,33 +26,26 @@ export default function LibraryScreen() {
     try {
       setBusy(true);
       const res = await DocumentPicker.getDocumentAsync({
-        type: ['application/epub+zip', 'text/plain', 'text/*'],
+        type: ['application/epub+zip'],
         copyToCacheDirectory: true,
       });
       if (res.canceled || !res.assets?.[0]) return;
       const asset = res.assets[0];
       const rawName = (asset.name ?? 'Upload').replace(/\.[^.]+$/, '');
-      const isEpub = asset.name?.toLowerCase().endsWith('.epub')
-        || asset.mimeType === 'application/epub+zip';
 
-      if (isEpub) {
-        // Parse the EPUB directly from the cached file — no second copy.
-        // DocumentPicker already copied it to cache (copyToCacheDirectory: true).
-        const b64 = await readAsStringAsync(asset.uri, { encoding: 'base64' });
-        const bytes = base64ToUint8Array(b64);
-        const epub = parseEpub(bytes);
+      // Parse the EPUB directly from the cached file — no second copy.
+      // DocumentPicker already copied it to cache (copyToCacheDirectory: true).
+      const b64 = await readAsStringAsync(asset.uri, { encoding: 'base64' });
+      const bytes = base64ToUint8Array(b64);
+      const epub = parseEpub(bytes);
 
-        // Filename as primary title, EPUB metadata as enhancement
-        const title = rawName || epub.title || 'Ohne Titel';
-        const chapterTitles = epub.chapters.map((c) => c.title);
-        importBook(title, epub.body, epub.author || 'Unbekannt', {
-          filePath: asset.uri,
-          chapterTitles,
-        });
-      } else {
-        const content = await readAsStringAsync(asset.uri);
-        importBook(rawName, content);
-      }
+      // Filename as primary title, EPUB metadata as enhancement
+      const title = rawName || epub.title || 'Ohne Titel';
+      const chapterTitles = epub.chapters.map((c) => c.title);
+      importBook(title, epub.body, epub.author || 'Unbekannt', {
+        filePath: asset.uri,
+        chapterTitles,
+      });
       refresh();
     } catch (e) {
       Alert.alert('Upload fehlgeschlagen', e instanceof Error ? e.message : String(e));
@@ -115,7 +108,7 @@ export default function LibraryScreen() {
           <Ionicons name="book-outline" size={36} color={theme.border} />
           <Text style={[styles.emptyTitle, { color: theme.text }]}>Keine Texte</Text>
           <Text style={[styles.emptySub, { color: theme.textSecondary }]}>
-            Lade eine .txt- oder .epub-Datei hoch, um lateinische Texte zu lesen.
+            Lade eine .epub-Datei hoch, um lateinische Texte zu lesen.
           </Text>
           <Button
             title={busy ? 'Lade…' : 'Text hochladen'}

@@ -36,6 +36,18 @@ export type UiStrings = {
   sortRecent: string;
   noVocabFound: string;
   dueToday: string;
+  // Package management
+  packagesTitle: string;
+  noPackages: string;
+  uploadPackage: string;
+  packageWords: (n: number) => string;
+  deletePackage: string;
+  deletePackageConfirm: (name: string, n: number) => string;
+  deleteVocabConfirm: (lemma: string) => string;
+  deleteVocab: string;
+  // Duplicates
+  filterDuplicates: string;
+  noDuplicates: string;
 };
 
 export const DE: UiStrings = {
@@ -63,6 +75,18 @@ export const DE: UiStrings = {
   sortRecent: 'Zuletzt',
   noVocabFound: 'Keine Vokabeln gefunden',
   dueToday: 'heute fällig',
+  // Package management
+  packagesTitle: 'Anki-Pakete',
+  noPackages: 'Keine importierten Vokabeln',
+  uploadPackage: 'Paket hochladen',
+  packageWords: (n) => n === 1 ? '1 Wort' : `${n} Wörter`,
+  deletePackage: 'Paket löschen',
+  deletePackageConfirm: (name, n) => `„${name}" mit ${n} ${n === 1 ? 'Vokabel' : 'Vokabeln'} löschen?`,
+  deleteVocabConfirm: (lemma) => `„${lemma}" löschen?`,
+  deleteVocab: 'Vokabel löschen',
+  // Duplicates
+  filterDuplicates: 'Dubletten',
+  noDuplicates: 'Keine Dubletten gefunden',
 };
 
 export const LA: UiStrings = {
@@ -90,6 +114,18 @@ export const LA: UiStrings = {
   sortRecent: 'Recens',
   noVocabFound: 'Nulla vocabula inventa',
   dueToday: 'hodie reddenda',
+  // Package management
+  packagesTitle: 'Fasciculi Anki',
+  noPackages: 'Nulla vocabula importata',
+  uploadPackage: 'Fasciculum onerare',
+  packageWords: (n) => n === 1 ? '1 vocabulum' : `${n} vocabula`,
+  deletePackage: 'Fasciculum delere',
+  deletePackageConfirm: (name, n) => `„${name}" (${n} ${n === 1 ? 'vocabulum' : 'vocabula'}) delere?`,
+  deleteVocabConfirm: (lemma) => `„${lemma}" delere?`,
+  deleteVocab: 'Vocabulum delere',
+  // Duplicates
+  filterDuplicates: 'Duplicata',
+  noDuplicates: 'Nulla duplicata inventa',
 };
 
 export const STRINGS: Record<UiLang, UiStrings> = { de: DE, la: LA };

@@ -2,9 +2,9 @@ import { eq, inArray, lt, sql } from 'drizzle-orm';
 
 import { SEED_GRAMMAR } from '@/data/grammar';
 import { SEED_SAYINGS } from '@/data/sayings';
-import { SEED_TEXTS } from '@/data/texts';
+
 import { SEED_VOCAB } from '@/data/vocab';
-import { normalizeLatin, tokenizeLatin } from '@/lib/latin/normalize';
+import { normalizeLatin } from '@/lib/latin/normalize';
 import { IMPORT_ID_BASE } from '@/lib/vocab/import';
 
 import { db, setForeignKeys } from './client';
@@ -21,7 +21,7 @@ import {
 } from './schema';
 
 /** Bump to re-seed bundled content (progress is preserved). */
-const SEED_VERSION = 6;
+const SEED_VERSION = 7;
 
 const DEFAULT_KV: Record<string, string> = {
   xp: '0',
@@ -86,8 +86,6 @@ function seedContent(formMap: Map<string, number>): void {
     glossDe: v.glossDe,
     glossEn: v.glossEn ?? null,
     freqRank: v.freqRank,
-    freqGroup: v.freqGroup,
-    semanticGroup: v.semanticGroup ?? null,
   }));
   for (let i = 0; i < lemmaRows.length; i += 200) {
     db.insert(lemmas).values(lemmaRows.slice(i, i + 200)).run();
@@ -150,34 +148,8 @@ function seedContent(formMap: Map<string, number>): void {
       .run();
   }
 
-  // Books + precomputed coverage
-  const now = Date.now();
-  for (const b of SEED_TEXTS) {
-    const tokens = tokenizeLatin(b.body).filter((t) => t.isWord && t.key);
-    const counts = new Map<number, number>();
-    for (const t of tokens) {
-      const lemmaId = formMap.get(t.key);
-      if (lemmaId != null) counts.set(lemmaId, (counts.get(lemmaId) ?? 0) + 1);
-    }
-    db.insert(books)
-      .values({
-        id: b.id,
-        title: b.title,
-        author: b.author ?? null,
-        source: b.source ?? null,
-        license: b.license ?? null,
-        level: b.level,
-        levelScore: b.levelScore,
-        totalTokens: tokens.length,
-        uniqueLemmas: counts.size,
-        body: b.body,
-        builtin: true,
-        addedAt: now,
-      })
-      .run();
-    const rows = [...counts.entries()].map(([lemmaId, count]) => ({ bookId: b.id, lemmaId, count }));
-    if (rows.length) db.insert(bookLemmas).values(rows).run();
-  }
+
+
 
   setForeignKeys(true);
 }

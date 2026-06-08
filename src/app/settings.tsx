@@ -10,12 +10,12 @@ import { useTheme } from '@/hooks/use-theme';
 import { getElevenLabsKey, setElevenLabsKey } from '@/lib/secure';
 import { useStrings } from '@/hooks/use-strings';
 import { kvGet, kvSet } from '@/lib/kv';
-import { useApp, type Pronunciation, type UiLang } from '@/store/app';
+import { useApp, type Pronunciation, type UiLang, type ThemeMode } from '@/store/app';
 
 export default function SettingsScreen() {
   const theme = useTheme();
   const t = useStrings();
-  const { pronunciation, setPronunciation, dailyGoalNew, setDailyGoalNew, retention, setRetention, uiLang, setUiLang } =
+  const { pronunciation, setPronunciation, dailyGoalNew, setDailyGoalNew, retention, setRetention, uiLang, setUiLang, themeMode, setThemeMode } =
     useApp();
 
   const [elevenKey, setElevenKeyState] = useState('');
@@ -42,6 +42,22 @@ export default function SettingsScreen() {
 
   return (
     <Screen scroll>
+      {/* ── Appearance ───────────────────────────────────────────────── */}
+      <SettingsGroup title="Erscheinungsbild" theme={theme}>
+        <Card>
+          <Segmented<ThemeMode>
+            value={themeMode}
+            onChange={setThemeMode}
+            options={[
+              { value: 'light', label: 'Hell' },
+              { value: 'dark', label: 'Dunkel' },
+              { value: 'system', label: 'System' },
+            ]}
+            theme={theme}
+          />
+        </Card>
+      </SettingsGroup>
+
       {/* ── Language & Learning ──────────────────────────────────────── */}
       <SettingsGroup title={t.settingsLangLabel} theme={theme}>
         <Card>

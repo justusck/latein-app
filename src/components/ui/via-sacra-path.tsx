@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, Dimensions } from 'react-native';
+import { Dimensions, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, {
   Circle,
   Defs,
@@ -15,10 +15,10 @@ import Svg, {
 } from 'react-native-svg';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { PARADIGMS } from '@/data/paradigms';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useTheme } from '@/hooks/use-theme';
 import type { TopicWithProgress } from '@/lib/grammar';
-import { PARADIGMS } from '@/data/paradigms';
 
 // Decorative statues + temples flanking the path. The source art is auto-traced
 // "realistic" SVGs (5k–13k <path> nodes, 2.5–5.4 MB each). Rendering those with
@@ -30,10 +30,12 @@ import { PARADIGMS } from '@/data/paradigms';
 const StatueA = require('../../../assets/decorations/statue-a.webp');
 const StatueB = require('../../../assets/decorations/statue-b.webp');
 const TempleImg = require('../../../assets/decorations/temple.webp');
+const PillarImg = require('../../../assets/decorations/pillar.webp');
 
 // Natural aspect ratios (source viewBox)
 const STATUE_RATIO = 1024 / 1536; // ~0.67 portrait
 const TEMPLE_RATIO = 1536 / 1024; // ~1.5 landscape
+const PILLAR_RATIO = 1024 / 1536; // ~0.67 portrait (same as statues)
 
 // ── Roman numerals ──────────────────────────────────────────────────────────
 
@@ -64,7 +66,10 @@ const PATH_LEFT_X = 72;
 const PATH_RIGHT_X = 298;
 const NODE_V_SPACING = 140;
 const STAGE_GAP = 90;
-const PATH_STROKE_W = 9;
+const HEADER_SPACING = 70;
+const PATH_STROKE_W = 40;
+const PATH_BORDER_W = 20;
+const PATH_DASH_W = 3;
 const SVG_W = 370;
 
 // ── Node position type ──────────────────────────────────────────────────────
@@ -127,7 +132,7 @@ function computeLayout(
     const completed = stageTopics.filter((t) => t.completed).length;
 
     headers.push({ y: currentY, stage, completed, total: stageTopics.length });
-    currentY += 52;
+    currentY += HEADER_SPACING;
 
     for (let i = 0; i < stageTopics.length; i++) {
       const side = i % 2 === 0;
@@ -308,6 +313,88 @@ function DetailCard({
   );
 }
 
+// ── Stage Tablet ────────────────────────────────────────────────────────────
+
+function StageTablet({
+  y,
+  label,
+  completed,
+  total,
+  theme,
+}: {
+  y: number;
+  label: string;
+  completed: number;
+  total: number;
+  theme: ReturnType<typeof useTheme>;
+}) {
+  return (
+    <View
+      style={[
+        tabletStyles.slab,
+        {
+          top: y - 14,
+          backgroundColor: theme.card,
+          borderColor: theme.accent + '45',
+          shadowColor: theme.text,
+        },
+      ]}>
+      <View style={tabletStyles.row}>
+        <Text style={[tabletStyles.label, { color: theme.primary }]}>
+          {label}
+        </Text>
+        <View style={[tabletStyles.meta, { borderColor: theme.accent + '50' }]}>
+          <Text style={[tabletStyles.metaText, { color: theme.accent }]}>
+            {completed}/{total}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const tabletStyles = StyleSheet.create({
+  slab: {
+    position: 'absolute',
+    left: 4,
+    right: 4,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: Spacing.four,
+    zIndex: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.22,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  label: {
+    fontFamily: Fonts.serif,
+    fontSize: 19,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textShadowColor: 'rgba(0,0,0,0.18)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
+  },
+  meta: {
+    borderWidth: 1.5,
+    borderRadius: Radius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  metaText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+});
+
 // ── Main Component ──────────────────────────────────────────────────────────
 
 interface ViaSacraPathProps {
@@ -358,28 +445,83 @@ export function ViaSacraPath({ topics, paradigmsByStage }: ViaSacraPathProps) {
     setExpandedNode(null);
   }, []);
 
-  // Decorative elements
+  // ── Decoration system ───────────────────────────────────────────────
+  //
+  // Decorations (statues, pillars, temples) are placed in pairs flanking
+  // the path, anchored to node rows so they follow the same rhythm as the
+  // content. A single `addDecoPair` helper handles both sides at once —
+  // no per-statue coordinate tweaking.
+
   const decorations = useMemo(() => {
     interface Deco {
-      type: 'statue' | 'temple';
+      type: 'statue' | 'temple' | 'pillar';
       x: number; y: number; facingRight?: boolean;
       height: number; width: number;
-      /** Index into the statue SVGs (0 = StatueA, 1 = StatueB) */
       statueVariant?: number;
     }
-    const deco: Deco[] = [];
-    let statueFlip = 0;
 
+    // ── Sizing constants (change these to scale all decorations) ──────
+    const BASE_STATUE_H = 220;
+    const BASE_PILLAR_H = 220;
+
+    // X anchors — statues bleed slightly past the SVG edge for drama;
+    // pillars use a smaller bleed so they stay on-screen on both sides.
+    const STATUE_LEFT_X = -6;
+    const PILLAR_LEFT_X = -18;
+
+    // Y anchor: what fraction of the decoration sits above the node row
+    const DECO_Y_ANCHOR = 0.65;
+
+    // ── Reusable pair placer ──────────────────────────────────────────
+    const deco: Deco[] = [];
+    let variant = 0;
+
+    function addDecoPair(
+      nodeY: number,
+      opts?: { includePillars?: boolean; statueScale?: number; pillarsOnly?: boolean },
+    ) {
+      const { includePillars = false, statueScale = 1, pillarsOnly = false } = opts ?? {};
+
+      if (!pillarsOnly) {
+        const sH = BASE_STATUE_H * statueScale;
+        const sW = sH * STATUE_RATIO;
+        const sY = nodeY - sH * DECO_Y_ANCHOR;
+        const rightStatueX = SVG_W - sW - STATUE_LEFT_X;
+
+        // Left statue (faces inward → right)
+        deco.push({
+          type: 'statue', x: STATUE_LEFT_X, y: sY,
+          height: sH, width: sW,
+          facingRight: true, statueVariant: variant % 2,
+        });
+        // Right statue (faces inward → left)
+        deco.push({
+          type: 'statue', x: rightStatueX, y: sY,
+          height: sH, width: sW,
+          facingRight: false, statueVariant: (variant + 1) % 2,
+        });
+        variant++;
+      }
+
+      if (includePillars || pillarsOnly) {
+        const pH = BASE_PILLAR_H * statueScale;
+        const pW = pH * PILLAR_RATIO;
+        const pY = nodeY - pH * DECO_Y_ANCHOR;
+        const rightPillarX = SVG_W - pW - PILLAR_LEFT_X;
+
+        deco.push({ type: 'pillar', x: PILLAR_LEFT_X, y: pY, height: pH, width: pW });
+        deco.push({ type: 'pillar', x: rightPillarX, y: pY, height: pH, width: pW });
+      }
+    }
+
+    // ── Per-stage layout ──────────────────────────────────────────────
     for (const h of stageHeaders) {
-      // Temple gateway at stage top — centered, wide landscape
-      const templeW = 300;
+      // Temple gateway — full-width arch above the stage header
+      const templeW = SVG_W;
       const templeH = templeW / TEMPLE_RATIO;
       deco.push({
-        type: 'temple',
-        x: (SVG_W - templeW) / 2,
-        y: h.y - templeH - 4,
-        width: templeW,
-        height: templeH,
+        type: 'temple', x: 0, y: h.y - templeH - 2,
+        width: templeW, height: templeH,
       });
 
       const stageNodeYs = nodes
@@ -388,49 +530,13 @@ export function ViaSacraPath({ topics, paradigmsByStage }: ViaSacraPathProps) {
 
       if (stageNodeYs.length === 0) continue;
 
-      // Statues flanking the stage — taller, more imposing
-      const statueH = 170;
-      const statueW = statueH * STATUE_RATIO;
+      // Entry pair — always present, with pillars framing the gateway
+      addDecoPair(stageNodeYs[0], { includePillars: false });
 
-      // Left statue: aligned with first node
-      deco.push({
-        type: 'statue',
-        x: 0,
-        y: stageNodeYs[0] - statueH + 30,
-        height: statueH,
-        width: statueW,
-        facingRight: true,
-        statueVariant: statueFlip % 2,
-      });
-      statueFlip++;
-
-      // Right statue: between first and second node
-      if (stageNodeYs.length >= 2) {
-        const rightY = (stageNodeYs[0] + stageNodeYs[1]) / 2 - statueH / 2;
-        deco.push({
-          type: 'statue',
-          x: SVG_W - statueW - 4,
-          y: rightY,
-          height: statueH,
-          width: statueW,
-          facingRight: false,
-          statueVariant: statueFlip % 2,
-        });
-        statueFlip++;
-      }
-
-      // Extra statues for larger stages (4+ topics)
-      if (stageNodeYs.length >= 4) {
-        deco.push({
-          type: 'statue',
-          x: 0,
-          y: stageNodeYs[3] - statueH + 30,
-          height: statueH * 0.85,
-          width: statueW * 0.85,
-          facingRight: true,
-          statueVariant: statueFlip % 2,
-        });
-        statueFlip++;
+      // Mid-stage pillars — only when the stage has enough depth to breathe
+      if (stageNodeYs.length >= 5) {
+        const midIdx = Math.floor(stageNodeYs.length / 2);
+        addDecoPair(stageNodeYs[midIdx], { pillarsOnly: true, statueScale: 1.0 });
       }
     }
     return deco;
@@ -448,7 +554,7 @@ export function ViaSacraPath({ topics, paradigmsByStage }: ViaSacraPathProps) {
         <Svg
           width={SVG_W}
           height={totalHeight}
-          style={StyleSheet.absoluteFill}
+          style={[StyleSheet.absoluteFill, { zIndex: 1 }]}
           viewBox={`0 0 ${SVG_W} ${totalHeight}`}>
           <Defs>
             <LinearGradient id="pathGrad" x1="0" y1="0" x2="0" y2="1">
@@ -471,8 +577,8 @@ export function ViaSacraPath({ topics, paradigmsByStage }: ViaSacraPathProps) {
           {pathData ? (
             <>
               <Path d={pathData} fill="none" stroke="url(#pathGrad)" strokeWidth={PATH_STROKE_W} strokeLinecap="round" strokeLinejoin="round" />
-              <Path d={pathData} fill="none" stroke={theme.border} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.25} />
-              <Path d={pathData} fill="none" stroke={theme.textSecondary} strokeWidth={3} strokeLinecap="round" strokeDasharray="1 22" opacity={0.09} />
+              <Path d={pathData} fill="none" stroke={theme.border} strokeWidth={PATH_BORDER_W} strokeLinecap="round" strokeLinejoin="round" opacity={0.25} />
+              <Path d={pathData} fill="none" stroke={theme.textSecondary} strokeWidth={PATH_DASH_W} strokeLinecap="round" strokeDasharray="1 22" opacity={0.25} />
             </>
           ) : null}
 
@@ -481,12 +587,14 @@ export function ViaSacraPath({ topics, paradigmsByStage }: ViaSacraPathProps) {
             if (n.isTrainer) {
               return (
                 <G key={n.id}>
-                  {/* Drop shadow */}
-                  <Circle cx={n.x + 1.5} cy={n.y + 2.5} r={NODE_R - 2} fill="none" stroke={theme.text} strokeWidth={3} opacity={0.12} />
+                  {/* Solid base — blocks decorations behind */}
+                  <Circle cx={n.x} cy={n.y} r={NODE_R - 2} fill={theme.card} />
                   {/* Outer glow */}
-                  <Circle cx={n.x} cy={n.y} r={NODE_R} fill="none" stroke={theme.purple} strokeWidth={1.5} opacity={0.2} />
-                  {/* Main sphere */}
-                  <Circle cx={n.x} cy={n.y} r={NODE_R - 2} fill={theme.purple + '18'} stroke={theme.purple} strokeWidth={2.5} opacity={0.85} />
+                  <Circle cx={n.x} cy={n.y} r={NODE_R} fill="none" stroke={theme.purple} strokeWidth={1.5} opacity={0.25} />
+                  {/* Purple tint overlay */}
+                  <Circle cx={n.x} cy={n.y} r={NODE_R - 2} fill={theme.purple + '18'} />
+                  {/* Stroke */}
+                  <Circle cx={n.x} cy={n.y} r={NODE_R - 2} fill="none" stroke={theme.purple} strokeWidth={2.5} opacity={0.85} />
                   {/* Top highlight */}
                   <Ellipse cx={n.x - 7} cy={n.y - 9} rx={6} ry={4} fill="#FFFFFF" opacity={0.18} />
                 </G>
@@ -522,14 +630,14 @@ export function ViaSacraPath({ topics, paradigmsByStage }: ViaSacraPathProps) {
                 {isNext && (
                   <Circle cx={n.x} cy={n.y} r={NODE_R + 12} fill="none" stroke={theme.primary} strokeWidth={1.5} opacity={0.12} />
                 )}
-                {/* Drop shadow */}
-                <Circle cx={n.x + 1.5} cy={n.y + 2.5} r={NODE_R} fill="none" stroke={theme.text} strokeWidth={3} opacity={0.1} />
+                {/* Solid base — blocks decorations behind transparent fills */}
+                {(isCompleted || isNext) && (
+                  <Circle cx={n.x} cy={n.y} r={NODE_R} fill={theme.card} />
+                )}
                 {/* Outer rim */}
-                <Circle cx={n.x} cy={n.y} r={NODE_R + 4} fill="none" stroke={stroke} strokeWidth={1} opacity={0.15} />
+                <Circle cx={n.x} cy={n.y} r={NODE_R + 4} fill="none" stroke={stroke} strokeWidth={1} opacity={0.12} />
                 {/* Main sphere */}
                 <Circle cx={n.x} cy={n.y} r={NODE_R} fill={fill} stroke={stroke} strokeWidth={strokeW} />
-                {/* Inner rim — depth */}
-                <Circle cx={n.x} cy={n.y} r={NODE_R - 3} fill="none" stroke={stroke} strokeWidth={0.8} opacity={0.12} />
                 {/* Top highlight (light reflection) */}
                 <Ellipse cx={n.x - 8} cy={n.y - 10} rx={7} ry={4.5} fill="#FFFFFF" opacity={0.22} />
                 {/* Completed laurel wreath */}
@@ -586,18 +694,33 @@ export function ViaSacraPath({ topics, paradigmsByStage }: ViaSacraPathProps) {
             );
           })}
 
-        {/* ── Stage Headers ──────────────────────────────────── */}
-        {stageHeaders.map((h) => (
-          <View key={h.stage} style={[styles.stageOverlay, { top: h.y - 8 }]}>
-            <Text style={[styles.stageLabel, { color: theme.primary }]}>
-              {STAGE_LABELS[h.stage] ?? h.stage}
-            </Text>
-            <View style={[styles.stageMeta, { backgroundColor: theme.muted }]}>
-              <Text style={[styles.stageMetaText, { color: theme.textSecondary }]}>
-                {h.completed}/{h.total}
-              </Text>
+        {/* ── Pillars (RN overlay, gateway columns inside statues) ── */}
+        {decorations
+          .filter((d) => d.type === 'pillar')
+          .map((d, i) => (
+            <View
+              key={`pillar-${i}`}
+              style={[styles.decoWrap, { left: d.x, top: d.y, width: d.width, height: d.height }]}>
+              <Image
+                source={PillarImg}
+                style={[styles.decoImage, { opacity: 0.6 }]}
+                contentFit="contain"
+                transition={reducedMotion ? 0 : 240}
+                cachePolicy="memory-disk"
+              />
             </View>
-          </View>
+          ))}
+
+        {/* ── Stage Headers — inscribed tablets ──────────────── */}
+        {stageHeaders.map((h) => (
+          <StageTablet
+            key={h.stage}
+            y={h.y}
+            label={STAGE_LABELS[h.stage] ?? h.stage}
+            completed={h.completed}
+            total={h.total}
+            theme={theme}
+          />
         ))}
 
         {/* ── Interactive Nodes ──────────────────────────────── */}
@@ -660,31 +783,46 @@ export function ViaSacraPath({ topics, paradigmsByStage }: ViaSacraPathProps) {
 const screenW = Dimensions.get('window').width;
 
 const styles = StyleSheet.create({
-  stageOverlay: {
+  // ── Stage header: inscribed tablet ─────────────────────────────────────────
+  stageSlab: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: 4,
+    right: 4,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    paddingVertical: 5,
+    paddingHorizontal: Spacing.four,
+    zIndex: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.22,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  slabRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.four,
-    height: 40,
-    zIndex: 5,
   },
-  stageLabel: {
+  slabLabel: {
     fontFamily: Fonts.serif,
-    fontSize: 22,
+    fontSize: 19,
     fontWeight: '800',
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
+    // Engraved depth: subtle dark shadow below glyphs
+    textShadowColor: 'rgba(0,0,0,0.18)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
   },
-  stageMeta: {
-    paddingHorizontal: Spacing.two + 2,
+  slabMeta: {
+    borderWidth: 1.5,
+    borderRadius: Radius.sm,
+    paddingHorizontal: 10,
     paddingVertical: 3,
-    borderRadius: Radius.pill,
   },
-  stageMetaText: {
+  slabMetaText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   nodeTouch: {
     position: 'absolute',
@@ -702,7 +840,7 @@ const styles = StyleSheet.create({
   },
   decoWrap: {
     position: 'absolute',
-    zIndex: 1,
+    zIndex: 0,
   },
   decoImage: {
     width: '100%',

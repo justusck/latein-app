@@ -10,8 +10,6 @@ export type SeedLemma = {
   glossDe: string;
   glossEn?: string;
   freqRank: number;
-  freqGroup: number; // learning portion, ascending difficulty
-  semanticGroup?: string;
   /** surface forms (any case) used for tap-to-gloss & coverage; macrons/casing
    *  are normalised at load time. The lemma itself is added automatically. */
   forms?: string[];

@@ -119,7 +119,6 @@ const list = [...merged.values()].sort(
   (a, b) => a.headword.length - b.headword.length || a.headword.localeCompare(b.headword),
 );
 
-const GROUP_SIZE = 100;
 const BASE_ID = 1000; // curated core uses 1..50
 const lemmas = list.map((e, i) => ({
   id: BASE_ID + i,
@@ -127,7 +126,6 @@ const lemmas = list.map((e, i) => ({
   pos: e.pos,
   glossDe: [...e.glosses].slice(0, 3).join('; ').slice(0, 140),
   freqRank: 1000 + i,
-  freqGroup: 7 + Math.floor(i / GROUP_SIZE),
   forms: [...e.forms].slice(0, 12),
 }));
 
