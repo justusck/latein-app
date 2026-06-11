@@ -82,6 +82,27 @@ export const PARADIGMS: Paradigm[] = [
     ['rēgem', 'rēgēs'],
     ['rēge', 'rēgibus'],
   ]),
+  noun('decl-u', '4. Deklination (u)', 'manus, manūs (f.)', 'nouns-4-5-decl', [
+    ['manus', 'manūs'],
+    ['manūs', 'manuum'],
+    ['manuī', 'manibus'],
+    ['manum', 'manūs'],
+    ['manū', 'manibus'],
+  ]),
+  noun('decl-e', '5. Deklination (e)', 'rēs, reī (f.)', 'nouns-4-5-decl', [
+    ['rēs', 'rēs'],
+    ['reī', 'rērum'],
+    ['reī', 'rēbus'],
+    ['rem', 'rēs'],
+    ['rē', 'rēbus'],
+  ]),
+  noun('decl-comp', 'Komparativ', 'fortior, fortiōris (m./f.)', 'adverbs-comparison', [
+    ['fortior', 'fortiōrēs'],
+    ['fortiōris', 'fortiōrum'],
+    ['fortiōrī', 'fortiōribus'],
+    ['fortiōrem', 'fortiōrēs'],
+    ['fortiōre', 'fortiōribus'],
+  ]),
   verb('verb-a', 'Präsens · a-Konjugation', 'amāre (lieben)', 'present-a-conj', [
     ['amō', 'amāmus'],
     ['amās', 'amātis'],
@@ -106,6 +127,26 @@ export const PARADIGMS: Paradigm[] = [
     ['sum', 'sumus'],
     ['es', 'estis'],
     ['est', 'sunt'],
+  ]),
+  verb('verb-impf', 'Imperfekt · a-Konjugation', 'amāre (lieben)', 'imperfect-future', [
+    ['amābam', 'amābāmus'],
+    ['amābās', 'amābātis'],
+    ['amābat', 'amābant'],
+  ]),
+  verb('verb-fut', 'Futur I · a-Konjugation', 'amāre (lieben)', 'imperfect-future', [
+    ['amābō', 'amābimus'],
+    ['amābis', 'amābitis'],
+    ['amābit', 'amābunt'],
+  ]),
+  verb('verb-perf', 'Perfekt · a-Konjugation', 'amāre (lieben)', 'perfect-system', [
+    ['amāvī', 'amāvimus'],
+    ['amāvistī', 'amāvistis'],
+    ['amāvit', 'amāvērunt'],
+  ]),
+  verb('verb-pass', 'Präsens Passiv · a-Konjugation', 'amārī (geliebt werden)', 'passive', [
+    ['amor', 'amāmur'],
+    ['amāris', 'amāminī'],
+    ['amātur', 'amantur'],
   ]),
 ];
 

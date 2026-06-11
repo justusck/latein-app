@@ -62,7 +62,8 @@ export function Button({
           borderColor: variant === 'ghost' ? theme.border : 'transparent',
           borderWidth: variant === 'ghost' ? StyleSheet.hairlineWidth : 0,
           alignSelf: fullWidth ? 'stretch' : 'center',
-          opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
+          opacity: disabled ? 0.5 : pressed ? 0.9 : 1,
+          transform: [{ scale: pressed && !disabled ? 0.975 : 1 }],
         },
         style,
       ]}>

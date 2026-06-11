@@ -19,6 +19,7 @@ import { PARADIGMS } from '@/data/paradigms';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useTheme } from '@/hooks/use-theme';
 import type { TopicWithProgress } from '@/lib/grammar';
+import { toRoman } from '@/lib/roman';
 
 // Decorative statues + temples flanking the path. The source art is auto-traced
 // "realistic" SVGs (5k–13k <path> nodes, 2.5–5.4 MB each). Rendering those with
@@ -37,16 +38,6 @@ const STATUE_RATIO = 1024 / 1536; // ~0.67 portrait
 const TEMPLE_RATIO = 1536 / 1024; // ~1.5 landscape
 const PILLAR_RATIO = 1024 / 1536; // ~0.67 portrait (same as statues)
 
-// ── Roman numerals ──────────────────────────────────────────────────────────
-
-const ROMAN = [
-  '', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X',
-  'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX',
-];
-
-function toRoman(n: number): string {
-  return ROMAN[n] ?? String(n);
-}
 
 // ── Stage metadata ──────────────────────────────────────────────────────────
 

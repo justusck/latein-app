@@ -5,6 +5,7 @@ import { SEED_SAYINGS } from '@/data/sayings';
 
 import { SEED_VOCAB } from '@/data/vocab';
 import { normalizeLatin } from '@/lib/latin/normalize';
+import { bumpDictRev } from '@/lib/reading/html-cache';
 import { IMPORT_ID_BASE } from '@/lib/vocab/import';
 
 import { db, setForeignKeys } from './client';
@@ -21,7 +22,7 @@ import {
 } from './schema';
 
 /** Bump to re-seed bundled content (progress is preserved). */
-const SEED_VERSION = 7;
+const SEED_VERSION = 8;
 
 const DEFAULT_KV: Record<string, string> = {
   xp: '0',
@@ -166,6 +167,7 @@ export function seedDatabase(): void {
   if (currentSeedVersion() >= SEED_VERSION) return;
   const formMap = buildFormMap();
   seedContent(formMap);
+  bumpDictRev(); // word_forms were rebuilt → cached reader documents are stale
   db.insert(kv)
     .values({ key: 'seedVersion', value: String(SEED_VERSION) })
     .onConflictDoUpdate({ target: kv.key, set: { value: String(SEED_VERSION) } })

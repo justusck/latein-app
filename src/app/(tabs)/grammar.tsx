@@ -16,7 +16,7 @@ import { SearchBar } from '@/components/ui/search-bar';
 import { ParadigmTable } from '@/components/paradigm-table';
 import { SwipeableTabs } from '@/components/ui/swipeable-tabs';
 import { TabScreen } from '@/components/ui/tab-screen';
-import { Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { ViaSacraPath } from '@/components/ui/via-sacra-path';
 import { PARADIGMS } from '@/data/paradigms';
 import { useTheme } from '@/hooks/use-theme';
@@ -144,6 +144,99 @@ const suggStyles = StyleSheet.create({
     flex: 1,
   },
 });
+
+// ── Reference card (Nachschlagen) ─────────────────────────────────────────
+
+function SectionHeading({ title, theme }: { title: string; theme: ReturnType<typeof useTheme> }) {
+  return (
+    <View style={headStyles.row}>
+      <View style={[headStyles.line, { backgroundColor: theme.accent }]} />
+      <Text style={[headStyles.title, { color: theme.text }]}>{title}</Text>
+      <View style={[headStyles.line, { backgroundColor: theme.accent }]} />
+    </View>
+  );
+}
+
+const headStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    marginBottom: Spacing.two + 2,
+  },
+  line: { flex: 1, height: StyleSheet.hairlineWidth, opacity: 0.6 },
+  title: {
+    fontFamily: Fonts.serif,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+});
+
+function RefCard({
+  paradigm,
+  icon,
+  expanded,
+  onToggle,
+  theme,
+}: {
+  paradigm: (typeof PARADIGMS)[number];
+  icon: keyof typeof Ionicons.glyphMap;
+  expanded: boolean;
+  onToggle: () => void;
+  theme: ReturnType<typeof useTheme>;
+}) {
+  return (
+    <View style={styles.cardGridItem}>
+      <Pressable
+        onPress={onToggle}
+        style={({ pressed }) => [
+          styles.refCard,
+          {
+            backgroundColor: theme.card,
+            borderColor: expanded ? theme.primary : theme.border,
+          },
+          pressed && { opacity: 0.75 },
+        ]}>
+        <View style={[styles.refMedallion, { backgroundColor: theme.muted }]}>
+          <Ionicons name={icon} size={16} color={expanded ? theme.primary : theme.textSecondary} />
+        </View>
+        <View style={styles.refBody}>
+          <Text
+            style={[styles.refCardTitle, { color: expanded ? theme.primary : theme.text }]}
+            numberOfLines={2}>
+            {paradigm.title}
+          </Text>
+          <Text style={[styles.refCardSub, { color: theme.textSecondary }]} numberOfLines={1}>
+            {paradigm.subtitle}
+          </Text>
+        </View>
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation?.();
+            if (Platform.OS !== 'web') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+            }
+            router.push(`/trainer/${paradigm.id}`);
+          }}
+          hitSlop={10}
+          style={({ pressed }) => [
+            styles.refCardBtn,
+            { backgroundColor: theme.primary },
+            pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
+          ]}>
+          <Text style={styles.refCardBtnText}>Üben</Text>
+        </Pressable>
+      </Pressable>
+
+      {expanded && (
+        <View style={{ marginTop: Spacing.two }}>
+          <ParadigmTable paradigm={paradigm} />
+        </View>
+      )}
+    </View>
+  );
+}
 
 // ── Main screen ───────────────────────────────────────────────────────────
 
@@ -311,124 +404,32 @@ export default function GrammarScreen() {
               {/* ── Reference paradigms ──────────────────────────────── */}
               <View style={{ height: Spacing.five }} />
 
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Deklinationen</Text>
+              <SectionHeading title="Deklinationen" theme={theme} />
               <View style={styles.cardGrid}>
-                {PARADIGMS.filter((p) => p.kind === 'noun').map((p) => {
-                  const expanded = expandedParadigms.has(p.id);
-                  return (
-                    <View key={p.id} style={styles.cardGridItem}>
-                      <Pressable
-                        onPress={() => toggleParadigm(p.id)}
-                        style={({ pressed }) => [
-                          styles.refCard,
-                          {
-                            backgroundColor: theme.card,
-                            borderColor: expanded ? theme.primary : theme.border,
-                          },
-                          pressed && { opacity: 0.7 },
-                        ]}>
-                        <View style={styles.refCardTop}>
-                          <Ionicons
-                            name="layers-outline"
-                            size={16}
-                            color={expanded ? theme.primary : theme.textSecondary}
-                          />
-                          <Text
-                            style={[
-                              styles.refCardTitle,
-                              { color: expanded ? theme.primary : theme.text },
-                            ]}
-                            numberOfLines={2}>
-                            {p.title}
-                          </Text>
-                        </View>
-                        <Text style={[styles.refCardSub, { color: theme.textSecondary }]} numberOfLines={1}>
-                          {p.subtitle}
-                        </Text>
-                        <View style={styles.refCardActions}>
-                          <Pressable
-                            onPress={(e) => {
-                              e.stopPropagation?.();
-                              if (Platform.OS !== 'web') {
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-                              }
-                              router.push(`/trainer/${p.id}`);
-                            }}
-                            hitSlop={10}
-                            style={[styles.refCardBtn, { backgroundColor: theme.primary }]}>
-                            <Text style={styles.refCardBtnText}>Üben</Text>
-                          </Pressable>
-                        </View>
-                      </Pressable>
-
-                      {expanded && (
-                        <View style={{ marginTop: Spacing.two }}>
-                          <ParadigmTable paradigm={p} />
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
+                {PARADIGMS.filter((p) => p.kind === 'noun').map((p) => (
+                  <RefCard
+                    key={p.id}
+                    paradigm={p}
+                    icon="layers-outline"
+                    expanded={expandedParadigms.has(p.id)}
+                    onToggle={() => toggleParadigm(p.id)}
+                    theme={theme}
+                  />
+                ))}
               </View>
 
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Konjugationen</Text>
+              <SectionHeading title="Konjugationen" theme={theme} />
               <View style={styles.cardGrid}>
-                {PARADIGMS.filter((p) => p.kind === 'verb').map((p) => {
-                  const expanded = expandedParadigms.has(p.id);
-                  return (
-                    <View key={p.id} style={styles.cardGridItem}>
-                      <Pressable
-                        onPress={() => toggleParadigm(p.id)}
-                        style={({ pressed }) => [
-                          styles.refCard,
-                          {
-                            backgroundColor: theme.card,
-                            borderColor: expanded ? theme.primary : theme.border,
-                          },
-                          pressed && { opacity: 0.7 },
-                        ]}>
-                        <View style={styles.refCardTop}>
-                          <Ionicons
-                            name="flash-outline"
-                            size={16}
-                            color={expanded ? theme.primary : theme.textSecondary}
-                          />
-                          <Text
-                            style={[
-                              styles.refCardTitle,
-                              { color: expanded ? theme.primary : theme.text },
-                            ]}
-                            numberOfLines={2}>
-                            {p.title}
-                          </Text>
-                        </View>
-                        <Text style={[styles.refCardSub, { color: theme.textSecondary }]} numberOfLines={1}>
-                          {p.subtitle}
-                        </Text>
-                        <View style={styles.refCardActions}>
-                          <Pressable
-                            onPress={(e) => {
-                              e.stopPropagation?.();
-                              if (Platform.OS !== 'web') {
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-                              }
-                              router.push(`/trainer/${p.id}`);
-                            }}
-                            hitSlop={10}
-                            style={[styles.refCardBtn, { backgroundColor: theme.primary }]}>
-                            <Text style={styles.refCardBtnText}>Üben</Text>
-                          </Pressable>
-                        </View>
-                      </Pressable>
-
-                      {expanded && (
-                        <View style={{ marginTop: Spacing.two }}>
-                          <ParadigmTable paradigm={p} />
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
+                {PARADIGMS.filter((p) => p.kind === 'verb').map((p) => (
+                  <RefCard
+                    key={p.id}
+                    paradigm={p}
+                    icon="flash-outline"
+                    expanded={expandedParadigms.has(p.id)}
+                    onToggle={() => toggleParadigm(p.id)}
+                    theme={theme}
+                  />
+                ))}
               </View>
 
               <View style={{ height: Spacing.four }} />
@@ -479,13 +480,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // Section title (Deklinationen, Konjugationen)
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    marginBottom: Spacing.two,
-  },
-
   // Reference paradigm cards
   cardGrid: {
     flexDirection: 'row',
@@ -497,34 +491,41 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   refCard: {
-    borderRadius: Radius.md,
-    borderWidth: 1.5,
-    padding: Spacing.three,
-    gap: Spacing.two,
-  },
-  refCardTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    gap: Spacing.two + 2,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    paddingVertical: Spacing.two + 2,
+    paddingHorizontal: Spacing.three,
+  },
+  refMedallion: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  refBody: {
+    flex: 1,
+    gap: 1,
   },
   refCardTitle: {
+    fontFamily: Fonts.serif,
     fontSize: 14,
     fontWeight: '700',
-    flex: 1,
   },
   refCardSub: {
     fontSize: 12,
     fontStyle: 'italic',
-  },
-  refCardActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: Spacing.one,
+    fontFamily: Fonts.serifBody,
   },
   refCardBtn: {
     paddingHorizontal: Spacing.three,
-    paddingVertical: 6,
-    borderRadius: Radius.sm,
+    paddingVertical: 7,
+    borderRadius: Radius.pill,
+    flexShrink: 0,
   },
   refCardBtnText: {
     color: '#fff',

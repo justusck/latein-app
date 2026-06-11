@@ -23,7 +23,7 @@ export default function TrainerScreen() {
   const theme = useTheme();
   const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { pronunciation, awardXp, registerActivity, xp: totalXpBefore, streakCount } = useApp();
+  const { pronunciation, awardXp, registerActivity, streakCount } = useApp();
 
   const paradigm = useMemo(() => (id ? getParadigm(id) : undefined), [id]);
 
@@ -35,7 +35,9 @@ export default function TrainerScreen() {
   const [revealed, setRevealed] = useState(false);
   const [triumphVisible, setTriumphVisible] = useState(false);
   const sessionXp = useRef(0);
-  const prevLevel = useRef(levelForXp(totalXpBefore));
+  // Frozen snapshot — the store xp updates live with awardXp, so reading the
+  // subscribed value later would double-count the session XP.
+  const xpAtStart = useRef(useApp.getState().xp);
 
   useLayoutEffect(() => {
     if (paradigm) navigation.setOptions({ title: paradigm.title });
@@ -158,22 +160,26 @@ export default function TrainerScreen() {
 
       {/* Triumph overlay */}
       {checked && triumphVisible && (() => {
-        const currentLevel = levelForXp(totalXpBefore + sessionXp.current);
-        const leveledUp = currentLevel.level > prevLevel.current.level;
+        const levelBefore = levelForXp(xpAtStart.current);
+        const currentLevel = levelForXp(xpAtStart.current + sessionXp.current);
+        const leveledUp = currentLevel.level > levelBefore.level;
         const allCorrect = correctCells === totalCells;
+        const rank = rankForLevel(currentLevel.level);
 
         const data: TriumphData = {
           xp: sessionXp.current,
-          xpTotal: totalXpBefore + sessionXp.current,
+          xpIntoLevel: currentLevel.xpIntoLevel,
           xpForNext: currentLevel.xpForNext,
           levelProgress: currentLevel.progress,
+          level: currentLevel.level,
+          rankLatin: rank.latin,
           streak: streakCount,
           cardsDone: totalCells,
           cardsCorrect: correctCells,
           accuracy: Math.round((correctCells / totalCells) * 100),
           newWords: 0,
           leveledUp,
-          newRank: leveledUp ? rankForLevel(currentLevel.level).latin : undefined,
+          newRank: leveledUp ? rank.latin : undefined,
         };
 
         return (

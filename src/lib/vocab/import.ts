@@ -4,6 +4,7 @@ import { db } from '@/db/client';
 import { ankiPackages, bookLemmas, lemmas, reviews, vocabCards, wordForms } from '@/db/schema';
 import type { AnkiPackage } from '@/db/schema';
 import { normalizeLatin } from '@/lib/latin/normalize';
+import { bumpDictRev } from '@/lib/reading/html-cache';
 
 /**
  * Imported vocabulary uses ids ≥ IMPORT_ID_BASE so the seeder can wipe & rebuild
@@ -102,6 +103,8 @@ export function importVocab(rows: ParsedRow[], packageName: string): ImportResul
     .where(eq(ankiPackages.id, pkg.id))
     .run();
 
+  if (added > 0) bumpDictRev(); // word_forms changed → reader caches are stale
+
   return { added, skipped, packageId: pkg.id, packageName };
 }
 
@@ -139,6 +142,7 @@ export function deletePackage(packageId: number): void {
   db.delete(wordForms).where(inArray(wordForms.lemmaId, lemmaIds)).run();
   db.delete(lemmas).where(eq(lemmas.packageId, packageId)).run();
   db.delete(ankiPackages).where(eq(ankiPackages.id, packageId)).run();
+  bumpDictRev();
 }
 
 // ── Single lemma deletion ──────────────────────────────────────────────────
@@ -155,6 +159,7 @@ export function deleteLemma(lemmaId: number): boolean {
   db.delete(bookLemmas).where(eq(bookLemmas.lemmaId, lemmaId)).run();
   db.delete(wordForms).where(eq(wordForms.lemmaId, lemmaId)).run();
   db.delete(lemmas).where(eq(lemmas.id, lemmaId)).run();
+  bumpDictRev();
 
   // Decrement the package word count if this belonged to one
   if (lemma.packageId) {
@@ -174,44 +179,52 @@ export type DuplicateGroup = {
   lemmas: { id: number; lemma: string; glossDe: string; isSeed: boolean }[];
 };
 
-/** Find lemmas whose normalised forms collide (same surface form maps to multiple lemma ids). */
+/**
+ * Find lemmas whose stored forms collide (same surface form maps to multiple
+ * lemma ids). Forms are persisted normalized (both seeder and importer run
+ * normalizeLatin), so the grouping happens entirely in SQL — the old
+ * implementation pulled the whole word_forms table into JS and re-normalized
+ * every row on every vocab-tab focus.
+ */
 export function findDuplicates(): DuplicateGroup[] {
-  const rows = db
-    .select({
-      form: wordForms.form,
-      lemmaId: wordForms.lemmaId,
-      lemma: lemmas.lemma,
-      glossDe: lemmas.glossDe,
-    })
+  const dupForms = db
+    .select({ form: wordForms.form })
     .from(wordForms)
-    .innerJoin(lemmas, eq(wordForms.lemmaId, lemmas.id))
-    .all();
+    .groupBy(wordForms.form)
+    .having(sql`count(distinct ${wordForms.lemmaId}) > 1`)
+    .all()
+    .map((r) => r.form);
+  if (dupForms.length === 0) return [];
 
-  // Group by normalised form
-  const byForm = new Map<string, { id: number; lemma: string; glossDe: string }[]>();
-  for (const r of rows) {
-    const key = normalizeLatin(r.form);
-    if (!key) continue;
-    if (!byForm.has(key)) byForm.set(key, []);
-    const group = byForm.get(key)!;
-    if (!group.some((g) => g.id === r.lemmaId)) {
-      group.push({ id: r.lemmaId, lemma: r.lemma, glossDe: r.glossDe });
+  const byForm = new Map<string, DuplicateGroup['lemmas']>();
+  for (let i = 0; i < dupForms.length; i += 200) {
+    const chunk = dupForms.slice(i, i + 200);
+    const rows = db
+      .select({
+        form: wordForms.form,
+        lemmaId: wordForms.lemmaId,
+        lemma: lemmas.lemma,
+        glossDe: lemmas.glossDe,
+      })
+      .from(wordForms)
+      .innerJoin(lemmas, eq(wordForms.lemmaId, lemmas.id))
+      .where(inArray(wordForms.form, chunk))
+      .all();
+    for (const r of rows) {
+      if (!byForm.has(r.form)) byForm.set(r.form, []);
+      const group = byForm.get(r.form)!;
+      if (!group.some((g) => g.id === r.lemmaId)) {
+        group.push({
+          id: r.lemmaId,
+          lemma: r.lemma,
+          glossDe: r.glossDe,
+          isSeed: r.lemmaId < IMPORT_ID_BASE,
+        });
+      }
     }
   }
 
-  // Keep only groups with >1 lemma
-  const duplicates: DuplicateGroup[] = [];
-  for (const [form, lemmasList] of byForm) {
-    if (lemmasList.length > 1) {
-      duplicates.push({
-        form,
-        lemmas: lemmasList.map((l) => ({
-          ...l,
-          isSeed: l.id < IMPORT_ID_BASE,
-        })),
-      });
-    }
-  }
-
-  return duplicates;
+  return [...byForm.entries()]
+    .filter(([, group]) => group.length > 1)
+    .map(([form, group]) => ({ form, lemmas: group }));
 }

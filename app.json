@@ -2,7 +2,7 @@
   "expo": {
     "name": "Latina",
     "slug": "latein-app",
-    "version": "1.1.3",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "lateinapp",
@@ -28,10 +28,15 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#ECE7DA",
+          "image": "./assets/images/icon.png",
+          "imageWidth": 192,
+          "ios": {
+            "image": "./assets/images/icon.png"
+          },
           "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+            "image": "./assets/images/icon.png",
+            "imageWidth": 192
           }
         }
       ],

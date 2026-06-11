@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
+import { File } from 'expo-file-system';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
-import { readAsStringAsync } from 'expo-file-system/legacy';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,7 +16,7 @@ import {
 import { WebView } from 'react-native-webview';
 
 import { WordGlossPanel } from '@/components/ui/word-panel';
-import { Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 import type { Lemma } from '@/db/schema';
@@ -25,202 +25,128 @@ import { kvGet, kvSet } from '@/lib/kv';
 import {
   addLemmaToVocab,
   getBook,
-  getDictFormKeys,
   getKnownFormKeys,
   glossForKey,
 } from '@/lib/reading';
-import { parseEpub, type EpubChapter } from '@/lib/reading/epub';
+import { parseEpub } from '@/lib/reading/epub';
+import {
+  buildReaderHtml,
+  getCachedReaderHtmlUri,
+} from '@/lib/reading/html-cache';
 import { speakLatin } from '@/lib/speech';
 import { useApp } from '@/store/app';
 
-// ── Build HTML document from EPUB chapters ──────────────────────────────────
+/**
+ * EPUB scrollable reader (v3).
+ *
+ * The HTML document is a single scrollable page. Word taps are recognised
+ * via delegated click. Scroll progress is stored in KV and restored on
+ * re-open. A thin progress bar at the bottom shows reading progress.
+ */
 
-function buildHtml(
-  chapters: EpubChapter[],
-  isDark: boolean,
-  knownKeys: string[],
-  dictKeys: string[],
-): string {
-  const bg = isDark ? '#0E0A0D' : '#F4ECDA';
-  const ink = isDark ? '#F5EEF3' : '#2B2218';
-  const knownJson = JSON.stringify(knownKeys);
-  const dictJson = JSON.stringify(dictKeys);
-
-  const chapterSections = chapters.map((ch) => ch.html).join('\n');
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 20px;
-    line-height: 1.7;
-    background: ${bg};
-    color: ${ink};
-    padding: 16px;
-    -webkit-text-size-adjust: 100%;
-  }
-  p { margin-bottom: 1em; }
-  /* Word highlighting */
-  .word-known { color: ${ink}; }
-  .word-dict { color: #B33C2D; font-weight: 700; text-decoration: underline; }
-  .word-unknown { color: ${isDark ? '#8B7D8A' : '#7A6E6A'}; }
-  .word-tapped { background: rgba(179,60,45,0.12); border-radius: 3px; }
-</style>
-</head>
-<body>
-${chapterSections}
-<script>
-  var KNOWN = new Set(${knownJson});
-  var DICT = new Set(${dictJson});
-
-  function normalizeLatin(w) {
-    return w.toLowerCase()
-      .replace(/[āĀ]/g,'a').replace(/[ēĒ]/g,'e').replace(/[īĪ]/g,'i').replace(/[ōŌ]/g,'o').replace(/[ūŪ]/g,'u')
-      .replace(/[âÂ]/g,'a').replace(/[êÊ]/g,'e').replace(/[îÎ]/g,'i').replace(/[ôÔ]/g,'o').replace(/[ûÛ]/g,'u')
-      .replace(/[^a-zü]/g,'').replace(/v/g,'u').replace(/j/g,'i');
-  }
-
-  function wrapWords(root) {
-    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
-    var texts = [];
-    while (walker.nextNode()) texts.push(walker.currentNode);
-    for (var i = 0; i < texts.length; i++) {
-      var node = texts[i];
-      var html = node.textContent.replace(
-        /([A-Za-zÀ-ʯĀ-ſḀ-ỿ]+)/g,
-        function(word) {
-          var key = normalizeLatin(word);
-          var cls = KNOWN.has(key) ? 'word-known' : DICT.has(key) ? 'word-dict' : 'word-unknown';
-          return '<span class="' + cls + '" data-word="1" data-raw="' + word + '" data-key="' + key + '">' + word + '</span>';
-        }
-      );
-      if (html !== node.textContent) {
-        var span = document.createElement('span');
-        span.innerHTML = html;
-        node.parentNode.replaceChild(span, node);
-      }
-    }
-  }
-  wrapWords(document.body);
-
-  // Word tap detection
-  var tappedEl = null;
-  document.body.addEventListener('click', function(e) {
-    var el = e.target;
-    while (el && el !== document.body) {
-      if (el.dataset && el.dataset.word) { break; }
-      el = el.parentElement;
-    }
-    if (!el || !el.dataset || !el.dataset.word) return;
-    if (tappedEl) tappedEl.classList.remove('word-tapped');
-    tappedEl = el;
-    el.classList.add('word-tapped');
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'word', raw: el.dataset.raw, key: el.dataset.key }));
-  });
-
-  // Scroll position — save periodically, restore on load
-  var lastSaved = 0;
-  window.addEventListener('scroll', function() {
-    var y = window.scrollY || document.documentElement.scrollTop;
-    if (Math.abs(y - lastSaved) > 60) {
-      lastSaved = y;
-      try { localStorage.setItem('scrollPos', y); } catch(e) {}
-      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', y: y }));
-    }
-  }, { passive: true });
-
-  // Restore saved position
-  var saved = localStorage.getItem('scrollPos');
-  if (saved) {
-    setTimeout(function() { window.scrollTo(0, parseInt(saved, 10)); }, 80);
-  }
-  // Also listen for RN to tell us the position
-  window.restoreScroll = function(y) { window.scrollTo(0, y); };
-
-</script>
-</body>
-</html>`;
-}
-
-// ── Reader Component ────────────────────────────────────────────────────────
+const PROGRESS_KV_PREFIX = 'reader-progress:';
 
 export default function Reader() {
   const theme = useTheme();
   const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { pronunciation, awardXp, registerActivity } = useApp();
+  const { pronunciation, awardXp, registerActivity, bumpVocabRev } = useApp();
 
   const book = useMemo(() => (id ? getBook(id) : null), [id]);
-  const savedScroll = useMemo(() => (id ? kvGet(`scroll:${id}`) : null), [id]);
 
-  // ── EPUB: parse file → build HTML with injected word spans ───────────────
+  const scheme = useColorScheme();
+  const isDark = scheme === 'dark';
+
+  // ── EPUB source ────────────────────────────────────────────────────────────
   const isEpub = !!book?.filePath;
-  const [chapters, setChapters] = useState<EpubChapter[] | null>(null);
-  const [htmlDoc, setHtmlDoc] = useState('');
+  const [sourceUri, setSourceUri] = useState<string | null>(null);
+  const [inlineHtml, setInlineHtml] = useState('');
   const [loading, setLoading] = useState(isEpub);
-  const [knownKeys] = useState(() => ({
-    known: getKnownFormKeys(),
-    dict: getDictFormKeys(),
-  }));
+  const [prepProgress, setPrepProgress] = useState<{ done: number; total: number } | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
-    if (!isEpub || !book?.filePath) return;
-    setLoading(true);
+    if (!isEpub || !book?.filePath || !id) return;
     let cancelled = false;
+
+    const cached = getCachedReaderHtmlUri(id);
+    if (cached) {
+      setSourceUri(cached);
+      setLoading(false);
+      return;
+    }
+
     (async () => {
       try {
-        const b64 = await readAsStringAsync(book.filePath!, { encoding: 'base64' });
+        const bytes = await new File(book.filePath!).bytes();
         if (cancelled) return;
-        const bytes = base64ToUint8Array(b64);
         const epub = parseEpub(bytes);
         if (cancelled) return;
-        setChapters(epub.chapters);
-        const html = buildHtml(
-          epub.chapters,
-          isDark,
-          [...knownKeys.known],
-          [...knownKeys.dict],
-        );
-        if (!cancelled) {
-          setHtmlDoc(html);
-          setLoading(false);
-        }
+        const built = await buildReaderHtml(id, epub.chapters, (done, total) => {
+          if (!cancelled) setPrepProgress({ done, total });
+        });
+        if (cancelled) return;
+        if (built.uri) setSourceUri(built.uri);
+        else setInlineHtml(built.html);
+        setLoading(false);
       } catch {
-        if (!cancelled) { setChapters([]); setLoading(false); }
+        if (!cancelled) { setLoadError(true); setLoading(false); }
       }
     })();
     return () => { cancelled = true; };
-  }, [isEpub, book?.filePath]);
+  }, [isEpub, book?.filePath, id]);
 
-  const hasChapters = chapters && chapters.length > 0;
   const webViewRef = useRef<WebView>(null);
-  const txtScrollRef = useRef<ScrollView>(null);
 
-  // ── Plain-text scroll tracking (builtin seed texts) ─────────────────────
+  // ── Scroll progress state ──────────────────────────────────────────────────
+  const [scrollPct, setScrollPct] = useState<number | null>(null);
+  const savedProgress = useMemo(() => {
+    if (!id) return null;
+    const v = kvGet(PROGRESS_KV_PREFIX + id);
+    return v ? Number(v) : null;
+  }, [id]);
+
+  // ── Runtime injection: theme, known words, saved scroll position ──────────
+  const applyRuntimeState = useCallback(() => {
+    if (!webViewRef.current) return;
+    const known = JSON.stringify([...getKnownFormKeys()]);
+    const progress = savedProgress ?? 0;
+    webViewRef.current.injectJavaScript(`
+      try {
+        window.__setTheme(${JSON.stringify(isDark ? 'dark' : 'light')});
+        window.__applyKnown(${known});
+        ${progress > 0 ? `window.__restoreScroll(${progress});` : ''}
+      } catch (e) {}
+      true;
+    `);
+  }, [isDark, savedProgress]);
+
+  // Theme switch without reload
+  useEffect(() => {
+    webViewRef.current?.injectJavaScript(
+      `try { window.__setTheme(${JSON.stringify(isDark ? 'dark' : 'light')}); } catch (e) {} true;`,
+    );
+  }, [isDark]);
+
+  // ── Plain text fallback (builtin seed books) ───────────────────────────────
+  const txtScrollRef = useRef<ScrollView>(null);
+  const txtSavedScroll = useMemo(() => (id ? kvGet(`scroll:${id}`) : null), [id]);
   const txtScrollY = useRef(0);
-  const onTxtScroll = useCallback((e: any) => {
-    txtScrollY.current = e.nativeEvent.contentOffset.y;
-  }, []);
+  const onTxtScroll = useCallback((e: any) => { txtScrollY.current = e.nativeEvent.contentOffset.y; }, []);
   const onTxtScrollEnd = useCallback(() => {
     if (id) kvSet(`scroll:${id}`, String(txtScrollY.current));
   }, [id]);
 
-  // Restore plain-text scroll position
   useEffect(() => {
-    if (!isEpub && savedScroll && txtScrollRef.current) {
+    if (!isEpub && txtSavedScroll && txtScrollRef.current) {
       const t = setTimeout(() => {
-        txtScrollRef.current?.scrollTo({ y: Number(savedScroll), animated: false });
+        txtScrollRef.current?.scrollTo({ y: Number(txtSavedScroll), animated: false });
       }, 100);
       return () => clearTimeout(t);
     }
-  }, [isEpub, savedScroll]);
+  }, [isEpub, txtSavedScroll]);
 
-  // ── Word gloss ───────────────────────────────────────────────────────────
+  // ── Word gloss ─────────────────────────────────────────────────────────────
   const [selected, setSelected] = useState<{ raw: string; key: string; lemma: Lemma | null } | null>(null);
   const [added, setAdded] = useState(false);
   const [read, setRead] = useState(() => (id ? kvGet(`read:${id}`) === '1' : false));
@@ -249,6 +175,7 @@ export default function Reader() {
     if (book) navigation.setOptions({ title: book.title });
   }, [navigation, book]);
 
+  // ── WebView message handler ────────────────────────────────────────────────
   const onWebViewMessage = useCallback((event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
@@ -258,21 +185,20 @@ export default function Reader() {
         setAdded(false);
         speakLatin(data.raw, pronunciation);
       } else if (data.type === 'scroll' && id) {
-        kvSet(`scroll:${id}`, String(data.y));
+        const pct = Number(data.pct);
+        setScrollPct(pct);
+        kvSet(PROGRESS_KV_PREFIX + id, String(pct));
+        // Mark as read when scrolled near the bottom
+        if (pct >= 95 && !read) {
+          awardXp(XP_READ_TEXT);
+          registerActivity();
+          kvSet(`read:${id}`, '1');
+          setRead(true);
+        }
       }
-    } catch { /* ignore malformed messages */ }
-  }, [pronunciation, id]);
+    } catch { /* ignore */ }
+  }, [pronunciation, id, read, awardXp, registerActivity]);
 
-  // Restore scroll position once the WebView is loaded
-  const onWebViewLoad = useCallback(() => {
-    if (savedScroll && webViewRef.current) {
-      webViewRef.current.injectJavaScript(`restoreScroll(${savedScroll}); true;`);
-    }
-  }, [savedScroll]);
-
-  // ── Theme ────────────────────────────────────────────────────────────────
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
   const bg = isDark ? theme.background : '#F4ECDA';
   const ink = isDark ? theme.text : '#2B2218';
   const serif = 'Georgia';
@@ -285,6 +211,9 @@ export default function Reader() {
     );
   }
 
+  const webViewSource = sourceUri ? { uri: sourceUri } : inlineHtml ? { html: inlineHtml } : null;
+  const progressPct = scrollPct !== null ? scrollPct / 100 : 0;
+
   const markRead = () => {
     if (read) return;
     awardXp(XP_READ_TEXT);
@@ -293,43 +222,59 @@ export default function Reader() {
     setRead(true);
   };
 
-  // Dark mode: inject CSS variables into WebView without reload
-  useEffect(() => {
-    if (!hasChapters || !webViewRef.current) return;
-    const bg = isDark ? '#0E0A0D' : '#F4ECDA';
-    const ink = isDark ? '#F5EEF3' : '#2B2218';
-    webViewRef.current.injectJavaScript(`
-      document.body.style.background = '${bg}';
-      document.body.style.color = '${ink}';
-      var hrs = document.querySelectorAll('hr');
-      for (var i = 0; i < hrs.length; i++) {
-        hrs[i].style.borderColor = '${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(43,34,24,0.15)'}';
-      }
-      true;
-    `);
-  }, [isDark, hasChapters]);
-
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
 
-      {/* ── EPUB: WebView ── */}
-      {isEpub && htmlDoc ? (
-        <WebView
-          ref={webViewRef}
-          source={{ html: htmlDoc }}
-          onMessage={onWebViewMessage}
-          onLoad={onWebViewLoad}
-          style={styles.fill}
-          scrollEnabled
-          javaScriptEnabled
-          showsVerticalScrollIndicator={false}
-          originWhitelist={['*']}
-        />
+      {/* ── EPUB: scrollable WebView ── */}
+      {isEpub && webViewSource ? (
+        <View style={styles.fill}>
+          <WebView
+            ref={webViewRef}
+            source={webViewSource}
+            onMessage={onWebViewMessage}
+            onLoadEnd={applyRuntimeState}
+            style={[styles.fill, { backgroundColor: bg }]}
+            scrollEnabled={true}
+            javaScriptEnabled
+            allowFileAccess
+            allowingReadAccessToURL={sourceUri ?? undefined}
+            showsVerticalScrollIndicator={false}
+            originWhitelist={['*']}
+            setSupportMultipleWindows={false}
+            overScrollMode="never"
+            bounces={false}
+          />
+
+          {/* ── Scroll progress bar ────────────────────────────────────── */}
+          {scrollPct !== null && (
+            <View style={styles.pageBar}>
+              <View style={[styles.pageTrack, { backgroundColor: theme.border + '44' }]}>
+                <View style={[styles.pageFill, { width: `${progressPct * 100}%`, backgroundColor: theme.accent }]} />
+              </View>
+              <Text style={[styles.pageLabel, { color: theme.textSecondary }]}>
+                {scrollPct} %
+              </Text>
+            </View>
+          )}
+        </View>
       ) : isEpub && loading ? (
         <View style={styles.loading}>
           <ActivityIndicator color={theme.primary} size="small" />
           <Text style={[styles.loadingText, { color: theme.textSecondary, fontFamily: serif }]}>
-            Text wird geladen…
+            {prepProgress
+              ? `Text wird vorbereitet … ${prepProgress.done}/${prepProgress.total}`
+              : 'Text wird geladen…'}
+          </Text>
+          {prepProgress && (
+            <Text style={[styles.loadingHint, { color: theme.textSecondary }]}>
+              Nur beim ersten Öffnen — danach startet das Buch sofort.
+            </Text>
+          )}
+        </View>
+      ) : isEpub && loadError ? (
+        <View style={styles.loading}>
+          <Text style={[styles.loadingText, { color: theme.textSecondary, fontFamily: serif }]}>
+            Die EPUB-Datei konnte nicht gelesen werden.
           </Text>
         </View>
       ) : null}
@@ -366,7 +311,15 @@ export default function Reader() {
             theme={theme}
             onClose={() => setSelected(null)}
             onSpeak={(w) => speakLatin(w, pronunciation)}
-            onAddToVocab={selected.lemma ? () => { addLemmaToVocab(selected.lemma!.id); setAdded(true); } : undefined}
+            onAddToVocab={
+              selected.lemma
+                ? () => {
+                    addLemmaToVocab(selected.lemma!.id);
+                    setAdded(true);
+                    bumpVocabRev();
+                  }
+                : undefined
+            }
             added={added}
             containerStyle={styles.panelCard}
           />
@@ -409,30 +362,45 @@ function Button({ title, onPress, disabled }: { title: string; onPress: () => vo
   );
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-function base64ToUint8Array(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
 // ── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   scrollContent: { padding: Spacing.three, paddingBottom: 80 },
   bodyText: { fontSize: 22, lineHeight: 38 },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.two },
-  loadingText: { fontSize: 16, fontStyle: 'italic' },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.two, paddingHorizontal: Spacing.four },
+  loadingText: { fontSize: 16, fontStyle: 'italic', textAlign: 'center' },
+  loadingHint: { fontSize: 12, textAlign: 'center', opacity: 0.8 },
+
+  // Scroll progress bar
+  pageBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  pageTrack: { flex: 1, height: 3, borderRadius: 2, overflow: 'hidden' },
+  pageFill: { height: 3, borderRadius: 2 },
+  pageLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    minWidth: 48,
+    textAlign: 'right',
+  },
 
   legend: { gap: 6, marginTop: Spacing.three },
   legItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   legDot: { width: 12, height: 12, borderRadius: 6 },
   legLabel: { fontSize: 13 },
 
-  btn: { paddingVertical: 14, paddingHorizontal: 20, borderRadius: Radius.pill, backgroundColor: '#B33C2D', alignItems: 'center' },
+  btn: { paddingVertical: 14, paddingHorizontal: 20, borderRadius: Radius.pill, backgroundColor: '#B33C2D', alignItems: 'center', marginTop: Spacing.three },
   btnDisabled: { backgroundColor: 'rgba(179,60,45,0.3)' },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   btnTextDisabled: { opacity: 0.5 },

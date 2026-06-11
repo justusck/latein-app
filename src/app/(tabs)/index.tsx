@@ -3,8 +3,20 @@ import * as DocumentPicker from 'expo-document-picker';
 import { readAsStringAsync } from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  FlatList,
+  InteractionManager,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 
 import { SearchBar } from '@/components/ui/search-bar';
@@ -44,7 +56,10 @@ export default function VocabScreen() {
   const t = useStrings();
   const reducedMotion = useReducedMotion();
   const dailyGoalNew = useApp((s) => s.dailyGoalNew);
+  const vocabRev = useApp((s) => s.vocabRev);
+  const bumpVocabRev = useApp((s) => s.bumpVocabRev);
   const [allLemmas, setAllLemmas] = useState<LemmaWithFullStatus[]>([]);
+  const [listReady, setListReady] = useState(false);
   const [stats, setStats] = useState<VocabStats | null>(null);
   const [importing, setImporting] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
@@ -55,20 +70,35 @@ export default function VocabScreen() {
 
   // Track the currently open swipeable row so only one is open at a time.
   const openSwipeableRef = useRef<Swipeable | null>(null);
-  const closeOpenSwipeable = useCallback(() => {
-    const row = openSwipeableRef.current;
-    openSwipeableRef.current = null; // clear before close to break recursion
-    row?.close();
-  }, []);
 
-  const refresh = useCallback(() => {
-    setStats(getVocabStats(dailyGoalNew));
-    setAllLemmas(getAllLemmasWithStatus());
-    setPackages(listPackages());
-    setDuplicates(findDuplicates());
+  // The ~5300-row list is expensive to marshal out of SQLite, so it is only
+  // (re)loaded when vocabRev changes — not on every tab focus — and only
+  // after the tab transition has finished painting.
+  const loadedRev = useRef<number | null>(null);
+
+  const refreshStats = useCallback(() => {
+    setStats(getVocabStats(dailyGoalNew)); // a handful of COUNTs — cheap
   }, [dailyGoalNew]);
 
-  useFocusEffect(useCallback(() => refresh(), [refresh]));
+  const loadHeavy = useCallback(
+    (rev: number) => {
+      setAllLemmas(getAllLemmasWithStatus());
+      setPackages(listPackages());
+      setDuplicates(findDuplicates());
+      setListReady(true);
+      loadedRev.current = rev;
+    },
+    [],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshStats();
+      if (loadedRev.current === vocabRev) return;
+      const task = InteractionManager.runAfterInteractions(() => loadHeavy(vocabRev));
+      return () => task.cancel();
+    }, [refreshStats, loadHeavy, vocabRev]),
+  );
 
   // ── Derived data ────────────────────────────────────────────────────────
 
@@ -120,15 +150,10 @@ export default function VocabScreen() {
       }
     }
 
-    // Search
+    // Search against the precomputed lowercase haystack (one includes() per row)
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
-      list = list.filter(
-        (l) =>
-          l.lemma.toLowerCase().includes(q) ||
-          l.glossDe.toLowerCase().includes(q) ||
-          (l.principalParts ?? '').toLowerCase().includes(q),
-      );
+      list = list.filter((l) => l.searchKey.includes(q));
     }
 
     // Sort
@@ -159,7 +184,8 @@ export default function VocabScreen() {
         return;
       }
       const { added, skipped } = importVocab(rows, rawName);
-      refresh();
+      refreshStats();
+      bumpVocabRev();
       Alert.alert(
         'Import abgeschlossen',
         `${added} neue Vokabeln hinzugefügt${skipped ? `, ${skipped} übersprungen` : ''}.`,
@@ -179,21 +205,24 @@ export default function VocabScreen() {
       {
         text: t.deletePackage,
         style: 'destructive',
-        onPress: () => { deletePackage(pkg.id); refresh(); },
+        onPress: () => { deletePackage(pkg.id); refreshStats(); bumpVocabRev(); },
       },
     ]);
   };
 
-  const confirmDeleteLemma = (lemma: LemmaWithFullStatus) => {
-    Alert.alert(t.deleteVocab, t.deleteVocabConfirm(lemma.lemma), [
-      { text: 'Abbrechen', style: 'cancel' },
-      {
-        text: t.deleteVocab,
-        style: 'destructive',
-        onPress: () => { deleteLemma(lemma.id); refresh(); },
-      },
-    ]);
-  };
+  const confirmDeleteLemma = useCallback(
+    (lemma: LemmaWithFullStatus) => {
+      Alert.alert(t.deleteVocab, t.deleteVocabConfirm(lemma.lemma), [
+        { text: 'Abbrechen', style: 'cancel' },
+        {
+          text: t.deleteVocab,
+          style: 'destructive',
+          onPress: () => { deleteLemma(lemma.id); refreshStats(); bumpVocabRev(); },
+        },
+      ]);
+    },
+    [t, refreshStats, bumpVocabRev],
+  );
 
   // ── Today summary values ───────────────────────────────────────────────
 
@@ -202,15 +231,37 @@ export default function VocabScreen() {
   const canStudy = due > 0 || newRemaining > 0;
   const totalToday = due + newRemaining;
 
+  // ── Row rendering (stable callback so memoized rows skip re-renders) ───
+
+  const renderItem = useCallback(
+    ({ item }: { item: LemmaWithFullStatus }) => (
+      <WordRow
+        lemma={item}
+        theme={theme}
+        t={t}
+        reducedMotion={reducedMotion}
+        isDuplicate={duplicateLemmaIds.has(item.id)}
+        onDelete={confirmDeleteLemma}
+        openSwipeableRef={openSwipeableRef}
+      />
+    ),
+    [theme, t, reducedMotion, duplicateLemmaIds, confirmDeleteLemma],
+  );
+
   // ── Main render ────────────────────────────────────────────────────────
 
   return (
     <TabScreen title={t.vocabTitle} scroll={false}>
       <FlatList
         data={displayed}
-        keyExtractor={(l) => String(l.id)}
+        keyExtractor={keyExtractor}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        initialNumToRender={14}
+        maxToRenderPerBatch={20}
+        updateCellsBatchingPeriod={40}
+        windowSize={9}
+        removeClippedSubviews={Platform.OS === 'android'}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <View>
@@ -456,32 +507,27 @@ export default function VocabScreen() {
             </View>
           </View>
         }
-        renderItem={({ item }) => (
-          <WordRow
-            lemma={item}
-            theme={theme}
-            t={t}
-            reducedMotion={reducedMotion}
-            isDuplicate={duplicateLemmaIds.has(item.id)}
-            onDelete={confirmDeleteLemma}
-            openSwipeableRef={openSwipeableRef}
-          />
-        )}
+        renderItem={renderItem}
         ListEmptyComponent={
-          <View style={styles.emptyWrap}>
-            <Ionicons
-              name={activeFilter === 'duplicates' ? 'checkmark-circle-outline' : 'search-outline'}
-              size={36}
-              color={theme.border}
-            />
-            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-              {activeFilter === 'duplicates'
-                ? t.noDuplicates
-                : searchQuery.trim()
-                  ? t.noVocabFound
-                  : t.noVocabFound}
-            </Text>
-          </View>
+          !listReady ? (
+            <View style={styles.emptyWrap}>
+              <ActivityIndicator color={theme.primary} />
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                Wörterliste wird geladen…
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.emptyWrap}>
+              <Ionicons
+                name={activeFilter === 'duplicates' ? 'checkmark-circle-outline' : 'search-outline'}
+                size={36}
+                color={theme.border}
+              />
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                {activeFilter === 'duplicates' ? t.noDuplicates : t.noVocabFound}
+              </Text>
+            </View>
+          )
         }
         ListFooterComponent={
           /* Bottom spacer so last rows aren't hidden behind tab bar */
@@ -494,7 +540,9 @@ export default function VocabScreen() {
 
 // ── WordRow ─────────────────────────────────────────────────────────────────
 
-function WordRow({
+const keyExtractor = (l: LemmaWithFullStatus) => String(l.id);
+
+const WordRow = memo(function WordRow({
   lemma,
   theme,
   t,
@@ -622,7 +670,7 @@ function WordRow({
       {rowContent}
     </Swipeable>
   );
-}
+});
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 

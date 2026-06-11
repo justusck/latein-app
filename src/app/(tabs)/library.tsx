@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { readAsStringAsync } from 'expo-file-system/legacy';
+import { Directory, File, Paths } from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
@@ -13,6 +13,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { getBooksWithCoverage, type BookCoverage } from '@/lib/knowledge';
 import { deleteBook, importBook } from '@/lib/reading';
 import { parseEpub } from '@/lib/reading/epub';
+import { buildReaderHtml, dropCachedReaderHtml } from '@/lib/reading/html-cache';
 
 export default function LibraryScreen() {
   const theme = useTheme();
@@ -33,20 +34,34 @@ export default function LibraryScreen() {
       const asset = res.assets[0];
       const rawName = (asset.name ?? 'Upload').replace(/\.[^.]+$/, '');
 
-      // Parse the EPUB directly from the cached file — no second copy.
-      // DocumentPicker already copied it to cache (copyToCacheDirectory: true).
-      const b64 = await readAsStringAsync(asset.uri, { encoding: 'base64' });
-      const bytes = base64ToUint8Array(b64);
+      const bytes = await new File(asset.uri).bytes();
       const epub = parseEpub(bytes);
+
+      // The picker URI lives in the cache and may be reaped by the OS — copy
+      // the EPUB into a persistent app directory before storing its path.
+      let persistentUri = asset.uri;
+      try {
+        const booksDir = new Directory(Paths.document, 'books');
+        if (!booksDir.exists) booksDir.create({ intermediates: true, idempotent: true });
+        const dest = new File(booksDir, `${Date.now()}-${rawName.replace(/[^A-Za-z0-9_-]/g, '_')}.epub`);
+        new File(asset.uri).copy(dest);
+        persistentUri = dest.uri;
+      } catch {
+        /* keep the cache URI as fallback */
+      }
 
       // Filename as primary title, EPUB metadata as enhancement
       const title = rawName || epub.title || 'Ohne Titel';
       const chapterTitles = epub.chapters.map((c) => c.title);
-      importBook(title, epub.body, epub.author || 'Unbekannt', {
-        filePath: asset.uri,
+      const bookId = importBook(title, epub.body, epub.author || 'Unbekannt', {
+        filePath: persistentUri,
         chapterTitles,
       });
       refresh();
+
+      // Pre-build the reader document in the background so the first open
+      // starts instantly.
+      buildReaderHtml(bookId, epub.chapters).catch(() => {});
     } catch (e) {
       Alert.alert('Upload fehlgeschlagen', e instanceof Error ? e.message : String(e));
     } finally {
@@ -60,7 +75,19 @@ export default function LibraryScreen() {
       {
         text: 'Löschen',
         style: 'destructive',
-        onPress: () => { deleteBook(id); refresh(); },
+        onPress: () => {
+          const filePath = items.find((i) => i.book.id === id)?.book.filePath;
+          deleteBook(id);
+          dropCachedReaderHtml(id);
+          // Remove our persistent copy of the EPUB (not picker-cache URIs).
+          if (filePath && filePath.includes('/books/')) {
+            try {
+              const f = new File(filePath);
+              if (f.exists) f.delete();
+            } catch { /* best effort */ }
+          }
+          refresh();
+        },
       },
     ]);
   };
@@ -217,17 +244,6 @@ function BookRow({
       </View>
     </Pressable>
   );
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-/** Decode a base64 string into a Uint8Array (works in RN without atob). */
-function base64ToUint8Array(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────────

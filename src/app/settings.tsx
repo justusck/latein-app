@@ -129,7 +129,7 @@ export default function SettingsScreen() {
         <Card style={{ gap: Spacing.two }}>
           <Text style={[styles.help, { color: theme.textSecondary }]}>
             Zusätzliche Anweisungen, die bei jeder Anfrage an die lokale KI gesendet werden.
-            Auf Deutsch formuliert. Z. B.: „Sprich immer im Plural", „Verwende nur Vokabeln aus Lektion 1–5".
+            Auf Deutsch formuliert. Z. B.: „Sprich immer im Plural“, „Verwende nur Vokabeln aus Lektion 1–5“.
           </Text>
           <TextInput
             value={customAiPrompt}

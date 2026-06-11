@@ -18,36 +18,60 @@ export type StudyCard = {
   isNew: boolean;
 };
 
-
-export type LemmaWithFullStatus = Lemma & {
+/**
+ * Slim list shape for the vocab tab. Deliberately NOT the full `Lemma` row:
+ * the list renders ~5300 entries, so we only marshal the columns it shows
+ * and precompute a lowercase search haystack once per load (instead of
+ * lowercasing three fields per row on every keystroke).
+ */
+export type LemmaWithFullStatus = {
+  id: number;
+  lemma: string;
+  pos: string;
+  principalParts: string | null;
+  glossDe: string;
+  freqRank: number | null;
   status: 'new' | 'introduced' | 'known';
   due: number | null; // epoch ms, null when no vocabCard exists yet
-  stability: number | null; // FSRS stability, null when not yet introduced
   lastReview: number | null;
+  searchKey: string;
 };
 
 /** All lemmas joined with FSRS card state, ordered by frequency rank. */
 export function getAllLemmasWithStatus(): LemmaWithFullStatus[] {
   const rows = db
-    .select()
+    .select({
+      id: lemmas.id,
+      lemma: lemmas.lemma,
+      pos: lemmas.pos,
+      principalParts: lemmas.principalParts,
+      glossDe: lemmas.glossDe,
+      freqRank: lemmas.freqRank,
+      stability: vocabCards.stability,
+      due: vocabCards.due,
+      lastReview: vocabCards.lastReview,
+    })
     .from(lemmas)
     .leftJoin(vocabCards, eq(lemmas.id, vocabCards.lemmaId))
     .orderBy(asc(lemmas.freqRank))
     .all();
-  return rows.map((r) => {
-    const card = r.vocab_cards;
-    let status: LemmaWithFullStatus['status'] = 'new';
-    if (card) {
-      status = card.stability >= KNOWN_STABILITY_DAYS ? 'known' : 'introduced';
-    }
-    return {
-      ...r.lemmas,
-      status,
-      due: card?.due ?? null,
-      stability: card?.stability ?? null,
-      lastReview: card?.lastReview ?? null,
-    };
-  });
+  return rows.map((r) => ({
+    id: r.id,
+    lemma: r.lemma,
+    pos: r.pos,
+    principalParts: r.principalParts,
+    glossDe: r.glossDe,
+    freqRank: r.freqRank,
+    status:
+      r.stability == null
+        ? ('new' as const)
+        : r.stability >= KNOWN_STABILITY_DAYS
+          ? ('known' as const)
+          : ('introduced' as const),
+    due: r.due ?? null,
+    lastReview: r.lastReview ?? null,
+    searchKey: `${r.lemma}\n${r.glossDe}\n${r.principalParts ?? ''}`.toLowerCase(),
+  }));
 }
 
 function startOfToday(): number {
@@ -148,15 +172,27 @@ export function getDistractorGlosses(excludeLemmaId: number, n: number): string[
     .map((r) => r.g);
 }
 
-/** Due cards (review + just-introduced new), learning states first. */
+function shuffleInPlace<T>(a: T[]): T[] {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/**
+ * Due cards for a session. The POOL is picked deterministically (most overdue
+ * first, so nothing starves), but the PRESENTATION order is shuffled every
+ * session, with new cards spread evenly between reviews instead of clumping.
+ */
 export function getDueCards(limit = 40): StudyCard[] {
   const now = Date.now();
-  return db
+  const pool = db
     .select()
     .from(vocabCards)
     .innerJoin(lemmas, eq(vocabCards.lemmaId, lemmas.id))
     .where(lte(vocabCards.due, now))
-    .orderBy(asc(vocabCards.state), asc(vocabCards.due))
+    .orderBy(asc(vocabCards.due))
     .limit(limit)
     .all()
     .map((r) => ({
@@ -174,6 +210,20 @@ export function getDueCards(limit = 40): StudyCard[] {
         lastReview: r.vocab_cards.lastReview,
       },
     }));
+
+  const fresh = shuffleInPlace(pool.filter((c) => c.isNew));
+  const reviewsDue = shuffleInPlace(pool.filter((c) => !c.isNew));
+  if (fresh.length === 0) return reviewsDue;
+  if (reviewsDue.length === 0) return fresh;
+
+  // Interleave: distribute new cards at even intervals among the reviews.
+  const out = [...reviewsDue];
+  const gap = (reviewsDue.length + 1) / (fresh.length + 1);
+  fresh.forEach((card, i) => {
+    const pos = Math.min(out.length, Math.round(gap * (i + 1)) + i);
+    out.splice(pos, 0, card);
+  });
+  return out;
 }
 
 /** Random already-introduced cards for free practice (ignores due date). */

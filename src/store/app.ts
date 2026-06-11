@@ -22,8 +22,15 @@ type AppState = {
   pronunciation: Pronunciation;
   uiLang: UiLang;
   themeMode: ThemeMode;
+  /**
+   * Monotonic counter, bumped whenever vocab data changes outside the vocab
+   * tab (session finished, import, delete, word added from reader). The tab
+   * reloads its heavy lemma list only when this changes — not on every focus.
+   */
+  vocabRev: number;
 
   hydrate: () => void;
+  bumpVocabRev: () => void;
   awardXp: (n: number) => { leveledUp: boolean; newLevel: number };
   addCoins: (n: number) => void;
   /** Mark today active; updates the streak. Returns the new streak length. */
@@ -47,6 +54,9 @@ export const useApp = create<AppState>((set, get) => ({
   pronunciation: 'classical',
   uiLang: 'de',
   themeMode: 'system' as ThemeMode,
+  vocabRev: 0,
+
+  bumpVocabRev: () => set((s) => ({ vocabRev: s.vocabRev + 1 })),
 
   hydrate: () => {
     set({

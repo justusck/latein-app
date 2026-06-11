@@ -12,6 +12,8 @@ type AnimatedCounterProps = TextProps & {
   duration?: number;
   /** Show "+" prefix for positive numbers. */
   plusPrefix?: boolean;
+  /** Static suffix appended after the number (e.g. "%"). */
+  suffix?: string;
 };
 
 /**
@@ -23,6 +25,7 @@ export function AnimatedCounter({
   trigger,
   duration = 500,
   plusPrefix,
+  suffix = '',
   style,
   ...textProps
 }: AnimatedCounterProps) {
@@ -50,7 +53,7 @@ export function AnimatedCounter({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trigger, to, duration, reducedMotion]);
 
-  const text = plusPrefix && rendered > 0 ? `+${rendered}` : String(rendered);
+  const text = `${plusPrefix && rendered > 0 ? `+${rendered}` : String(rendered)}${suffix}`;
 
   return (
     <Text style={style} {...textProps}>
