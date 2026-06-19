@@ -15,9 +15,11 @@ import { readFileSync, writeFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+const course = process.argv[2] === '--course' ? process.argv[3] : null;
+const suffix = course ? `-${course}` : '';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const srcDir = join(root, 'design/decorations-src');
-const outDir = join(root, 'assets/decorations');
+const srcDir = join(root, `design/decorations-src${suffix}`);
+const outDir = join(root, `assets/decorations${suffix}`);
 
 // renderWidth = largest on-screen width (dp) × 3 (for @3x screens), rounded up
 // with headroom. Temple shows at 300 dp, statues at ~113–170 dp.

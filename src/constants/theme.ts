@@ -7,6 +7,10 @@
 
 import { Platform } from 'react-native';
 
+import { activeCourseId } from '@/courses/active';
+
+import { ColorsJa, FontsJa } from './theme-ja';
+
 const palette = {
   // ── Tyrian Purple — Roman imperial primary ──────────────────────────────
   tyrian: '#66023C',         // primary action, hero bg (light)
@@ -53,7 +57,7 @@ const palette = {
   stoneTextSoft: '#B89DB0',
 } as const;
 
-export const Colors = {
+export const ColorsLa = {
   light: {
     text: palette.ink,
     textSecondary: palette.inkSoft,
@@ -88,12 +92,14 @@ export const Colors = {
   },
 } as const;
 
-export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
-export type ThemeColors = (typeof Colors)['light'];
+/** Canonical theme-token shape (key set from the Latin theme; values widened
+ *  to string so each course can supply its own palette). */
+export type ThemeColors = Record<keyof (typeof ColorsLa)['light'], string>;
+export type ThemeColor = keyof ThemeColors;
 
 export { palette };
 
-export const Fonts = Platform.select({
+export const FontsLa = Platform.select({
   ios: {
     sans: 'system-ui',
     serif: 'LibreCaslonText_700Bold',
@@ -116,6 +122,16 @@ export const Fonts = Platform.select({
     mono: 'monospace',
   },
 })!;
+
+/**
+ * Active-course theme + fonts, resolved ONCE at module load. Every existing
+ * `import { Colors, Fonts }` consumer and `useTheme()` stays unchanged and is
+ * automatically course-correct; switching courses reloads the app (see store
+ * `setCourse`), which re-resolves these fresh.
+ */
+const _isJa = activeCourseId() === 'ja';
+export const Colors: { light: ThemeColors; dark: ThemeColors } = _isJa ? ColorsJa : ColorsLa;
+export const Fonts = _isJa ? FontsJa : FontsLa;
 
 export const Spacing = {
   half: 2,

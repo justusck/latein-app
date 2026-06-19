@@ -1,0 +1,192 @@
+// Build the Japanese vocabulary seed from JMdict (EDRDG, CC BY-SA 4.0).
+//
+// Usage:
+//   1. Download JMdict_e.gz from https://www.edrdg.org/wiki/index.php/JMdict-EDICT_Dictionary
+//   2. gunzip JMdict_e.gz
+//   3. node scripts/build-seed-ja.mjs /path/to/JMdict_e [--limit N]
+//
+// Output:
+//   src/data/vocab-ja.generated.ts — seedable SeedLemma[] with the top-N most
+//   frequent/common entries. IDs start at 1000; core 1–999 are hand-curated in
+//   vocab-ja.ts.
+//
+// Mapping:
+//   - lemma  = keb (kanji) or reb (reading) if no kanji
+//   - reading = reb (kana, for furigana)
+//   - pos    = first JMdict pos tag mapped to a short slug (v5*, v1, adj-i, …)
+//   - glossDe = first ger gloss, or eng fallback
+//   - freqRank = order in the output (1 = most common)
+//   - forms  = reading alone (so tap-to-gloss matches kana-only text)
+
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createGunzip } from 'node:zlib';
+import { pipeline } from 'node:stream/promises';
+import { createReadStream } from 'node:fs';
+import { createWriteStream } from 'node:fs';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+// ── POS tag mapping ──────────────────────────────────────────────────────────
+const POS_MAP = {
+  'v1': 'v1',           // Ichidan verb
+  'v5u': 'v5u', 'v5k': 'v5k', 'v5g': 'v5g', 'v5s': 'v5s', 'v5t': 'v5t',
+  'v5n': 'v5n', 'v5b': 'v5b', 'v5m': 'v5m', 'v5r': 'v5r', 'v5k-s': 'v5k',
+  'v5aru': 'v5r',
+  'vs-i': 'vs-i',       // suru verb (irregular)
+  'vs': 'vs', 'vs-s': 'vs',
+  'vk': 'vk',           // kuru verb
+  'adj-i': 'adj-i',     // i-adjective
+  'adj-na': 'adj-na',   // na-adjective
+  'adj-t': 'adj-t',
+  'adv': 'adv',
+  'int': 'int',
+  'n': 'n',
+  'pn': 'pn',
+  'prt': 'prt',
+  'aux': 'aux',
+  'conj': 'conj',
+  'exp': 'exp',
+};
+
+function mapPos(posTags) {
+  for (const tag of posTags) {
+    const short = POS_MAP[tag];
+    if (short) return short;
+  }
+  return 'other';
+}
+
+// ── Frequency / priority scoring (approximate JLPT + commonness) ─────────────
+// Lower = more useful. Kept keys seen in the typical JMdict ke_pri / re_pri.
+const PRI_SCORE = {
+  'news1': 1, 'news2': 2,
+  'ichi1': 3,
+  'spec1': 4, 'spec2': 5,
+  'gai1': 6, 'gai2': 7,
+  'nf01': 10, 'nf02': 20, 'nf03': 30, 'nf04': 40, 'nf05': 50,
+  'nf06': 60, 'nf07': 70, 'nf08': 80, 'nf09': 90, 'nf10': 100,
+};
+
+function bestPriority(priList) {
+  let best = 999;
+  for (const p of priList) {
+    const s = PRI_SCORE[p];
+    if (s != null && s < best) best = s;
+  }
+  return best;
+}
+
+// ── Main parser ──────────────────────────────────────────────────────────────
+
+function parseJmdict(xmlPath, limit = 5000) {
+  const text = readFileSync(xmlPath, 'utf8');
+  const entries = text.split('<entry>').slice(1);
+  const results = [];
+  let nextId = 1000;
+
+  for (const block of entries) {
+    if (results.length >= limit) break;
+
+    const endIdx = block.indexOf('</entry>');
+    const entry = endIdx >= 0 ? block.slice(0, endIdx) : block;
+
+    // Keb (kanji) and reb (reading)
+    const kebMatch = entry.match(/<keb>([^<]+)<\/keb>/);
+    const rebMatch = entry.match(/<reb>([^<]+)<\/reb>/);
+
+    const kanji = kebMatch?.[1] ?? '';
+    const reading = rebMatch?.[1] ?? '';
+
+    if (!reading) continue; // skip entries with no reading
+
+    const lemma = kanji || reading;
+
+    // Priority / frequency
+    const priMatches = entry.match(/<(ke_pri|re_pri)>([^<]+)<\/(ke_pri|re_pri)>/g);
+    const priList = priMatches
+      ? [...priMatches].map(m => /<[^>]+>([^<]+)<\/[^>]+>/.exec(m)?.[1]).filter(Boolean)
+      : [];
+    const frequency = bestPriority(priList);
+
+    // POS tags
+    const posMatches = entry.match(/<pos>([^<]+)<\/pos>/g);
+    const posTags = posMatches
+      ? [...posMatches].map(m => /<pos>([^<]+)<\/pos>/.exec(m)?.[1]).filter(Boolean)
+      : [];
+    const pos = mapPos(posTags);
+
+    // Glosses
+    const glossMatches = entry.match(/<gloss[^>]*>([^<]+)<\/gloss>/g);
+    const glosses = glossMatches
+      ? [...glossMatches].map(m => /<gloss[^>]*>([^<]+)<\/gloss>/.exec(m)?.[1]).filter(Boolean)
+      : [];
+
+    // German first, then English
+    const gerGloss = entry.match(/<gloss xml:lang="ger"[^>]*>([^<]+)<\/gloss>/);
+    const engGloss = entry.match(/<gloss(?:\s+xml:lang="eng")?>([^<]+)<\/gloss>/);
+    const glossDe = gerGloss?.[1] ?? engGloss?.[1] ?? glosses[0] ?? '';
+
+    if (!glossDe) continue; // need at least one gloss
+
+    results.push({
+      id: nextId++,
+      lemma,
+      reading: reading !== lemma ? reading : undefined,
+      pos,
+      glossDe,
+      glossEn: engGloss?.[1] ?? glosses[0] ?? undefined,
+      freqRank: frequency,
+      forms: [reading !== lemma ? reading : undefined].filter(Boolean),
+    });
+  }
+
+  // Sort by frequency score, then limit
+  results.sort((a, b) => a.freqRank - b.freqRank);
+  return results.slice(0, limit);
+}
+
+function generateOutput(entries) {
+  const header = `// Auto-generated by scripts/build-seed-ja.mjs from JMdict (EDRDG, CC BY-SA 4.0).
+// ${entries.length} entries sorted by commonness/frequency.
+// Re-run after updating JMdict:  node scripts/build-seed-ja.mjs <JMdict_e.xml> [--limit N]
+import type { SeedLemma } from './types';
+
+export const GENERATED_VOCAB_JA: SeedLemma[] = [`;
+  const body = entries.map(e =>
+    `  { id: ${e.id}, lemma: ${JSON.stringify(e.lemma)}${e.reading ? `, reading: ${JSON.stringify(e.reading)}` : ''}, pos: ${JSON.stringify(e.pos)}, glossDe: ${JSON.stringify(e.glossDe)}${e.glossEn ? `, glossEn: ${JSON.stringify(e.glossEn)}` : ''}, freqRank: ${e.freqRank}${e.forms?.length ? `, forms: ${JSON.stringify(e.forms)}` : ''} },`
+  ).join('\n');
+  const footer = '\n];';
+  return header + '\n' + body + '\n' + footer + '\n';
+}
+
+// ── CLI ──────────────────────────────────────────────────────────────────────
+
+const args = process.argv.slice(2);
+if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
+  console.error(
+    'Usage: node scripts/build-seed-ja.mjs <JMdict_e.xml> [--limit N]\n\n' +
+    'Downloads: https://www.edrdg.org/wiki/index.php/JMdict-EDICT_Dictionary\n' +
+    'Output:   src/data/vocab-ja.generated.ts'
+  );
+  process.exit(1);
+}
+
+const xmlPath = resolve(args[0]);
+const limitIdx = args.indexOf('--limit');
+const limit = limitIdx >= 0 ? parseInt(args[limitIdx + 1], 10) || 5000 : 5000;
+
+// Handle .gz files
+const actualPath = xmlPath.endsWith('.gz')
+  ? (() => { throw new Error('Please gunzip JMdict_e.gz first (node --gunzip or gunzip command)'); })()
+  : xmlPath;
+
+const entries = parseJmdict(actualPath, limit);
+const output = generateOutput(entries);
+const outPath = resolve(root, 'src/data/vocab-ja.generated.ts');
+writeFileSync(outPath, output, 'utf8');
+
+console.log(`Wrote ${entries.length} entries to ${outPath}`);
+const kb = (bytes) => (bytes / 1024).toFixed(0);
+console.log(`Output size: ~${kb(Buffer.byteLength(output))} KB`);

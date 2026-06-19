@@ -11,15 +11,16 @@ import { useApp } from '@/store/app';
 type PageHeaderProps = {
   title: string;
   /**
-   * Custom right-side content.
-   * Defaults to a profile icon that navigates to /profile.
+   * Custom right-side content. Replaces the default streak + profile icon.
    * When provided, the caller is responsible for including all needed icons.
    */
   right?: ReactNode;
+  /** Extra element inserted between the title and the default right actions. */
+  titleExtra?: ReactNode;
 };
 
-/** Standard tab-screen header: serif title left, streak + action(s) right, hairline rule below. */
-export function PageHeader({ title, right }: PageHeaderProps) {
+/** Standard tab-screen header: serif title left, optional extra, streak + action(s) right. */
+export function PageHeader({ title, right, titleExtra }: PageHeaderProps) {
   const theme = useTheme();
   const streakCount = useApp((s) => s.streakCount);
 
@@ -34,6 +35,7 @@ export function PageHeader({ title, right }: PageHeaderProps) {
     <>
       <View style={styles.row}>
         <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+        {titleExtra}
         {right ?? (
           <View style={styles.rightGroup}>
             {/* Streak badge — always visible, restrained */}

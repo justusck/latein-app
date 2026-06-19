@@ -15,13 +15,17 @@ import {
 import { SearchBar } from '@/components/ui/search-bar';
 import { ParadigmTable } from '@/components/paradigm-table';
 import { SwipeableTabs } from '@/components/ui/swipeable-tabs';
+import { CourseSwitcher } from '@/components/ui/course-switcher';
 import { TabScreen } from '@/components/ui/tab-screen';
+import { useCourse } from '@/hooks/use-course';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { ViaSacraPath } from '@/components/ui/via-sacra-path';
-import { PARADIGMS } from '@/data/paradigms';
+import { PARADIGMS as PARADIGMS_LA, type Paradigm } from '@/data/paradigms';
+import { PARADIGMS_JA } from '@/data/paradigms-ja';
 import { useTheme } from '@/hooks/use-theme';
 import { getTopicsWithProgress, type TopicWithProgress } from '@/lib/grammar';
-import { lookupWord, searchLemmas, type LookupResult } from '@/lib/latin/inflect';
+import { lookupWord as lookupWordLa, searchLemmas as searchLemmasLa } from '@/lib/latin/inflect';
+import { lookupWordJa, searchLemmasJa } from '@/lib/japanese/lookup';
 
 // ── Segmented control ─────────────────────────────────────────────────────
 
@@ -180,7 +184,7 @@ function RefCard({
   onToggle,
   theme,
 }: {
-  paradigm: (typeof PARADIGMS)[number];
+  paradigm: Paradigm;
   icon: keyof typeof Ionicons.glyphMap;
   expanded: boolean;
   onToggle: () => void;
@@ -242,13 +246,24 @@ function RefCard({
 
 export default function GrammarScreen() {
   const theme = useTheme();
+  const course = useCourse();
+  const isJa = course.id === 'ja';
+  const PARADIGMS = isJa ? PARADIGMS_JA : PARADIGMS_LA;
+  const lookupWord = isJa ? lookupWordJa : lookupWordLa;
+  const searchLemmas = isJa
+    ? (q: string) => searchLemmasJa(q).map((r) => ({ id: r.id, lemma: r.lemma, glossDe: r.glossDe }))
+    : searchLemmasLa;
+  const refSections: { title: string; kind: string }[] = isJa
+    ? [{ title: 'Schriftsystem', kind: 'kana' }, { title: 'Verben', kind: 'verb' }, { title: 'Adjektive', kind: 'adj' }, { title: 'Partikel & Zählwörter', kind: 'particle' }]
+    : [{ title: 'Deklinationen', kind: 'noun' }, { title: 'Konjugationen', kind: 'verb' }];
+  const searchPlaceholder = isJa ? 'Wort eingeben (z.B. 食べる, 本, です) …' : 'Wort eingeben (z.B. puella, amō, rēx) …';
   const [tab, setTab] = useState(0);
   const [topics, setTopics] = useState<TopicWithProgress[]>([]);
 
   // ── Search state ────────────────────────────────────────────────
   const [searchText, setSearchText] = useState('');
   const [suggestions, setSuggestions] = useState<{ id: number; lemma: string; glossDe: string }[]>([]);
-  const [lookupResult, setLookupResult] = useState<LookupResult>(null);
+  const [lookupResult, setLookupResult] = useState<{ paradigm: Paradigm; lemma: Record<string, unknown> } | null>(null);
   const [lookupError, setLookupError] = useState(false);
   const [expandedParadigms, setExpandedParadigms] = useState<Set<string>>(new Set());
 
@@ -335,7 +350,7 @@ export default function GrammarScreen() {
   };
 
   return (
-    <TabScreen title="Grammatik" scroll={false} noBottomPadding>
+    <TabScreen title={course.tabLabels.grammar} titleExtra={<CourseSwitcher />} scroll={false} noBottomPadding>
       {/* ── Fixed header: segmented control ──────────────────── */}
       <SegmentedControl
         options={['Lernpfad', 'Nachschlagen']}
@@ -366,7 +381,7 @@ export default function GrammarScreen() {
                 onChangeText={handleSearchChange}
                 onSubmit={handleSearchSubmit}
                 onClear={handleSearchClear}
-                placeholder="Wort eingeben (z.B. puella, amō, rēx) …"
+                placeholder={searchPlaceholder}
               />
 
               {/* Autocomplete suggestions */}
@@ -404,33 +419,26 @@ export default function GrammarScreen() {
               {/* ── Reference paradigms ──────────────────────────────── */}
               <View style={{ height: Spacing.five }} />
 
-              <SectionHeading title="Deklinationen" theme={theme} />
-              <View style={styles.cardGrid}>
-                {PARADIGMS.filter((p) => p.kind === 'noun').map((p) => (
-                  <RefCard
-                    key={p.id}
-                    paradigm={p}
-                    icon="layers-outline"
-                    expanded={expandedParadigms.has(p.id)}
-                    onToggle={() => toggleParadigm(p.id)}
-                    theme={theme}
-                  />
-                ))}
-              </View>
-
-              <SectionHeading title="Konjugationen" theme={theme} />
-              <View style={styles.cardGrid}>
-                {PARADIGMS.filter((p) => p.kind === 'verb').map((p) => (
-                  <RefCard
-                    key={p.id}
-                    paradigm={p}
-                    icon="flash-outline"
-                    expanded={expandedParadigms.has(p.id)}
-                    onToggle={() => toggleParadigm(p.id)}
-                    theme={theme}
-                  />
-                ))}
-              </View>
+              {refSections.map((sec) => {
+                const items = PARADIGMS.filter((p) => (p.kind as string) === sec.kind);
+                return (
+                  <View key={sec.kind}>
+                    <SectionHeading title={sec.title} theme={theme} />
+                    <View style={styles.cardGrid}>
+                      {items.map((p) => (
+                        <RefCard
+                          key={p.id}
+                          paradigm={p}
+                          icon={(sec.kind === 'noun' || sec.kind === 'kana' || sec.kind === 'adj' || sec.kind === 'particle') ? 'layers-outline' : 'flash-outline'}
+                          expanded={expandedParadigms.has(p.id)}
+                          onToggle={() => toggleParadigm(p.id)}
+                          theme={theme}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                );
+              })}
 
               <View style={{ height: Spacing.four }} />
             </ScrollView>

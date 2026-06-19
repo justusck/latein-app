@@ -3,7 +3,7 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { ankiPackages, bookLemmas, lemmas, reviews, vocabCards, wordForms } from '@/db/schema';
 import type { AnkiPackage } from '@/db/schema';
-import { normalizeLatin } from '@/lib/latin/normalize';
+import { normalize as normalizeLatin } from '@/lib/text';
 import { bumpDictRev } from '@/lib/reading/html-cache';
 
 /**

@@ -22,11 +22,13 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { FadeInView } from '@/components/ui/fade-in';
 import { LatinMarkdown } from '@/components/ui/latin-markdown';
+import { CourseSwitcher } from '@/components/ui/course-switcher';
 import { TabScreen } from '@/components/ui/tab-screen';
 import { WordGlossPanel } from '@/components/ui/word-panel';
+import { useCourse } from '@/hooks/use-course';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { AI_MODES, type AiMode, type ChatMessage, chat, latinPart } from '@/lib/ai';
+import { getAiModes, type AiMode, type ChatMessage, chat, speakablePart } from '@/lib/ai';
 import { getEngineStatus, loadModel, onStatusChange, resetDownload, type EngineStatus } from '@/lib/ai/engine';
 import { appendMessage, loadOrStart, startConversation, type Conversation } from '@/lib/ai/conversations';
 import { XP_AI_TURN } from '@/lib/gamification';
@@ -46,6 +48,7 @@ const EMPTY_STATE: ModeState = { conv: null, input: '', error: '' };
 
 export default function AiScreen() {
   const theme = useTheme();
+  const course = useCourse();
   const { pronunciation, awardXp, registerActivity } = useApp();
 
   const [engineStatus, setEngineStatus] = useState<EngineStatus>(() => getEngineStatus());
@@ -71,7 +74,7 @@ export default function AiScreen() {
   const [characterPrompt, setCharacterPrompt] = useState('');
   const [showCharEditor, setShowCharEditor] = useState(false);
 
-  const activeMode = AI_MODES[activeIndex].id;
+  const activeMode = getAiModes()[activeIndex].id;
 
   // Subscribe to engine status + load model on first visit
   useFocusEffect(
@@ -160,7 +163,7 @@ export default function AiScreen() {
   const onPageChanged = (e: { nativeEvent: { contentOffset: { x: number } } }) => {
     if (!pageWidth) return;
     const i = Math.round(e.nativeEvent.contentOffset.x / pageWidth);
-    if (i !== activeIndex && i >= 0 && i < AI_MODES.length) {
+    if (i !== activeIndex && i >= 0 && i < getAiModes().length) {
       setActiveIndex(i);
     }
   };
@@ -247,7 +250,7 @@ export default function AiScreen() {
     const mbps = (engineStatus.bytesPerSecond / 1_048_576).toFixed(1);
     const hasSpeed = engineStatus.bytesPerSecond > 100_000; // >100 KB/s
     return (
-      <TabScreen title="Magister">
+      <TabScreen title={course.tabLabels.ai} titleExtra={<CourseSwitcher />}>
         <View style={styles.emptyState}>
           <View style={[styles.emptyIcon, { backgroundColor: theme.muted }]}>
             <Ionicons
@@ -294,7 +297,7 @@ export default function AiScreen() {
 
   if (engineStatus.state === 'error') {
     return (
-      <TabScreen title="Magister">
+      <TabScreen title={course.tabLabels.ai} titleExtra={<CourseSwitcher />}>
         <View style={styles.emptyState}>
           <View style={[styles.emptyIcon, { backgroundColor: theme.muted }]}>
             <Ionicons name="warning-outline" size={28} color={theme.danger} />
@@ -310,7 +313,7 @@ export default function AiScreen() {
   }
 
   const mainContent = (
-    <TabScreen title="Magister" scroll={false} noBottomPadding>
+    <TabScreen title={course.tabLabels.ai} titleExtra={<CourseSwitcher />} scroll={false} noBottomPadding>
         {/* Action bar */}
         <View style={styles.actionBar}>
           <View style={styles.actionBarLeft}>
@@ -356,7 +359,7 @@ export default function AiScreen() {
 
         {/* Mode tabs — tap to switch, synced with swipe */}
         <View style={[styles.tabBar, { backgroundColor: theme.muted }]}>
-          {AI_MODES.map((m, i) => {
+          {getAiModes().map((m, i) => {
             const active = i === activeIndex;
             return (
               <Pressable
@@ -385,7 +388,7 @@ export default function AiScreen() {
           style={styles.flex}
           contentContainerStyle={styles.pagerContent}
         >
-          {AI_MODES.map((m) => {
+          {getAiModes().map((m) => {
             const st = states[m.id];
             const isActive = m.id === activeMode;
             return (
@@ -439,7 +442,7 @@ export default function AiScreen() {
                         knownKeys={knownKeys}
                         dictKeys={dictKeys}
                         onWordPress={onWordPress}
-                        onSpeak={() => speakLatin(latinPart(msg.content) || msg.content, pronunciation)}
+                        onSpeak={() => speakLatin(speakablePart(msg.content) || msg.content, pronunciation)}
                       />
                     );
                     if (!recent) return bubble;

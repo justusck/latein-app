@@ -12,7 +12,7 @@ import { Radius, Spacing } from '@/constants/theme';
 import { getParadigm } from '@/data/paradigms';
 import { useTheme } from '@/hooks/use-theme';
 import { levelForXp, rankForLevel } from '@/lib/gamification';
-import { normalizeLatin } from '@/lib/latin/normalize';
+import { normalize } from '@/lib/text';
 import { speakLatin } from '@/lib/speech';
 import { useApp } from '@/store/app';
 
@@ -52,7 +52,7 @@ export default function TrainerScreen() {
   }
 
   const isCellCorrect = (r: number, c: number) =>
-    normalizeLatin(inputs[r]?.[c] ?? '') === normalizeLatin(paradigm.rows[r].cells[c]);
+    normalize(inputs[r]?.[c] ?? '') === normalize(paradigm.rows[r].cells[c]);
 
   const totalCells = paradigm.rows.reduce((n, r) => n + r.cells.length, 0);
   const correctCells = paradigm.rows.reduce(

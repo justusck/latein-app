@@ -14,6 +14,7 @@ import Svg, {
   Stop,
 } from 'react-native-svg';
 
+import { getActiveCourse } from '@/courses';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { PARADIGMS } from '@/data/paradigms';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
@@ -28,15 +29,21 @@ import { toRoman } from '@/lib/roman';
 // They are bitmaps in vector clothing, so we ship pre-rasterized WebP (built by
 // scripts/rasterize-decorations.mjs from design/decorations-src/) and draw them
 // with expo-image, which decodes natively and caches. ~13 MB SVG → ~340 KB WebP.
-const StatueA = require('../../../assets/decorations/statue-a.webp');
-const StatueB = require('../../../assets/decorations/statue-b.webp');
-const TempleImg = require('../../../assets/decorations/temple.webp');
-const PillarImg = require('../../../assets/decorations/pillar.webp');
+//
+// Assets are course-specific: Latin gets Roman temples/statues, Japanese gets
+// torii gates / stone lanterns / pagodas. Resolved once at module load.
+const _d = getActiveCourse().decorations;
+const StatueA = _d.statueA;
+const StatueB = _d.statueB;
+const TempleImg = _d.temple;
+const PillarImg = _d.pillar;
 
-// Natural aspect ratios (source viewBox)
-const STATUE_RATIO = 1024 / 1536; // ~0.67 portrait
-const TEMPLE_RATIO = 1536 / 1024; // ~1.5 landscape
-const PILLAR_RATIO = 1024 / 1536; // ~0.67 portrait (same as statues)
+// Aspect ratios + temple width are course-specific (Latin: landscape gateway;
+// Japanese: portrait temple rendered as a centered, narrower centerpiece).
+const STATUE_RATIO = _d.statueRatio;
+const TEMPLE_RATIO = _d.templeRatio;
+const PILLAR_RATIO = _d.pillarRatio;
+const TEMPLE_WIDTH_FACTOR = _d.templeWidthFactor;
 
 
 // ── Stage metadata ──────────────────────────────────────────────────────────
@@ -507,11 +514,12 @@ export function ViaSacraPath({ topics, paradigmsByStage }: ViaSacraPathProps) {
 
     // ── Per-stage layout ──────────────────────────────────────────────
     for (const h of stageHeaders) {
-      // Temple gateway — full-width arch above the stage header
-      const templeW = SVG_W;
+      // Temple gateway — centered above the stage header. Latin spans full
+      // width (landscape arch); Japanese is a narrower portrait centerpiece.
+      const templeW = SVG_W * TEMPLE_WIDTH_FACTOR;
       const templeH = templeW / TEMPLE_RATIO;
       deco.push({
-        type: 'temple', x: 0, y: h.y - templeH - 2,
+        type: 'temple', x: (SVG_W - templeW) / 2, y: h.y - templeH - 2,
         width: templeW, height: templeH,
       });
 

@@ -4,7 +4,7 @@ import { db } from '@/db/client';
 import { bookLemmas, books, lemmas, vocabCards, wordForms } from '@/db/schema';
 import type { Book, Lemma } from '@/db/schema';
 import { KNOWN_STABILITY_DAYS, newCardFields } from '@/lib/fsrs';
-import { tokenizeLatin } from '@/lib/latin/normalize';
+import { normalize, tokenize } from '@/lib/text';
 
 /** In-memory form → lemmaId map (the seeded table is small). */
 function loadFormMap(): Map<string, number> {
@@ -43,7 +43,7 @@ export function importBook(
 ): string {
   // Tokenise for coverage computation (always needed).
   const formMap = loadFormMap();
-  const tokens = tokenizeLatin(body).filter((t) => t.isWord && t.key);
+  const tokens = tokenize(body).filter((t) => t.isWord && t.key);
   const counts = new Map<number, number>();
   for (const t of tokens) {
     const lemmaId = formMap.get(t.key);

@@ -1,9 +1,5 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import {
-  LibreCaslonText_400Regular,
-  LibreCaslonText_700Bold,
-  useFonts,
-} from '@expo-google-fonts/libre-caslon-text';
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -11,6 +7,7 @@ import { ActivityIndicator, StyleSheet, Text, View, useColorScheme } from 'react
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { Colors, Spacing } from '@/constants/theme';
+import { getActiveCourse } from '@/courses';
 import { initDatabase } from '@/db/client';
 import { seedDatabase } from '@/db/seed';
 import { getDailySaying } from '@/lib/sayings';
@@ -22,7 +19,8 @@ export default function RootLayout() {
   const scheme = themeMode === 'system' ? systemScheme : themeMode;
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState<string>('');
-  const [fontsLoaded] = useFonts({ LibreCaslonText_400Regular, LibreCaslonText_700Bold });
+  const course = getActiveCourse();
+  const [fontsLoaded] = useFonts(course.fontModules);
 
   useEffect(() => {
     try {
@@ -45,7 +43,7 @@ export default function RootLayout() {
       <View style={[styles.center, { backgroundColor: theme.background }]}>
         {status === 'loading' ? (
           <>
-            <Text style={[styles.brand, { color: theme.primary }]}>LATĪNA</Text>
+            <Text style={[styles.brand, { color: theme.primary }]}>{course.displayName.toLocaleUpperCase()}</Text>
             <ActivityIndicator color={theme.primary} />
           </>
         ) : (

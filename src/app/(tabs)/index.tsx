@@ -20,7 +20,9 @@ import {
 import { Swipeable } from 'react-native-gesture-handler';
 
 import { SearchBar } from '@/components/ui/search-bar';
+import { CourseSwitcher } from '@/components/ui/course-switcher';
 import { TabScreen } from '@/components/ui/tab-screen';
+import { useCourse } from '@/hooks/use-course';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useStrings } from '@/hooks/use-strings';
 import { useTheme } from '@/hooks/use-theme';
@@ -53,6 +55,7 @@ interface FilterDef {
 
 export default function VocabScreen() {
   const theme = useTheme();
+  const course = useCourse();
   const t = useStrings();
   const reducedMotion = useReducedMotion();
   const dailyGoalNew = useApp((s) => s.dailyGoalNew);
@@ -251,7 +254,7 @@ export default function VocabScreen() {
   // ── Main render ────────────────────────────────────────────────────────
 
   return (
-    <TabScreen title={t.vocabTitle} scroll={false}>
+    <TabScreen title={course.tabLabels.vocab} titleExtra={<CourseSwitcher />} scroll={false}>
       <FlatList
         data={displayed}
         keyExtractor={keyExtractor}

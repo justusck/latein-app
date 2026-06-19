@@ -6,6 +6,7 @@ import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
 import { Radius, Spacing } from '@/constants/theme';
+import { useCourse } from '@/hooks/use-course';
 import { useTheme } from '@/hooks/use-theme';
 import { getElevenLabsKey, setElevenLabsKey } from '@/lib/secure';
 import { useStrings } from '@/hooks/use-strings';
@@ -14,6 +15,7 @@ import { useApp, type Pronunciation, type UiLang, type ThemeMode } from '@/store
 
 export default function SettingsScreen() {
   const theme = useTheme();
+  const course = useCourse();
   const t = useStrings();
   const { pronunciation, setPronunciation, dailyGoalNew, setDailyGoalNew, retention, setRetention, uiLang, setUiLang, themeMode, setThemeMode } =
     useApp();
@@ -142,19 +144,21 @@ export default function SettingsScreen() {
         </Card>
       </SettingsGroup>
 
-      <SettingsGroup title="Aussprache" theme={theme}>
-        <Card>
-          <Segmented<Pronunciation>
-            value={pronunciation}
-            onChange={setPronunciation}
-            options={[
-              { value: 'classical', label: 'Klassisch' },
-              { value: 'ecclesiastical', label: 'Kirchlich' },
-            ]}
-            theme={theme}
-          />
-        </Card>
-      </SettingsGroup>
+      {course.hasPronunciationModes && (
+        <SettingsGroup title="Aussprache" theme={theme}>
+          <Card>
+            <Segmented<Pronunciation>
+              value={pronunciation}
+              onChange={setPronunciation}
+              options={[
+                { value: 'classical', label: 'Klassisch' },
+                { value: 'ecclesiastical', label: 'Kirchlich' },
+              ]}
+              theme={theme}
+            />
+          </Card>
+        </SettingsGroup>
+      )}
     </Screen>
   );
 }

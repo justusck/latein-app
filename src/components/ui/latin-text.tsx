@@ -1,7 +1,7 @@
 import { Text, type StyleProp, type TextStyle } from 'react-native';
 
 import { useTheme } from '@/hooks/use-theme';
-import { tokenizeLatin } from '@/lib/latin/normalize';
+import { tokenize } from '@/lib/text';
 
 type LatinTextProps = {
   /** The Latin text to render with tappable words. */
@@ -30,7 +30,7 @@ type LatinTextProps = {
  * Used by the reader and the AI Magister chat.
  */
 export function LatinText({ text, knownKeys, dictKeys, onWordPress, theme, style, tappedWordKey }: LatinTextProps) {
-  const tokens = tokenizeLatin(text);
+  const tokens = tokenize(text);
 
   return (
     <Text style={style}>

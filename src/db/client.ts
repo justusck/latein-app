@@ -1,13 +1,20 @@
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import { openDatabaseSync } from 'expo-sqlite';
 
+import { activeCourseId } from '@/courses/active';
+
 import * as schema from './schema';
 
 /**
- * Single shared SQLite connection. `enableChangeListener` powers drizzle's
+ * Single shared SQLite connection for the ACTIVE course. Each course has its
+ * own database file (full data isolation; switching courses reloads the app —
+ * see store `setCourse`). `enableChangeListener` powers drizzle's
  * `useLiveQuery`, so the UI re-renders when the underlying tables change.
+ *
+ * File names mirror each course config's `dbFile` (latin.ts / japanese.ts).
  */
-const expoDb = openDatabaseSync('latina.db', { enableChangeListener: true });
+const DB_FILE: Record<string, string> = { la: 'latina.db', ja: 'nihongo.db' };
+const expoDb = openDatabaseSync(DB_FILE[activeCourseId()] ?? 'latina.db', { enableChangeListener: true });
 
 export const db = drizzle(expoDb, { schema });
 export { schema };
@@ -27,6 +34,7 @@ CREATE TABLE IF NOT EXISTS lemmas (
   pos TEXT NOT NULL,
   principal_parts TEXT,
   info TEXT,
+  reading TEXT,
   gloss_de TEXT NOT NULL,
   gloss_en TEXT,
   freq_rank INTEGER,
@@ -179,6 +187,7 @@ export function initDatabase(): void {
     `ALTER TABLE books ADD COLUMN chapters TEXT;`,
     `ALTER TABLE books ADD COLUMN file_path TEXT;`,
     `ALTER TABLE lemmas ADD COLUMN package_id INTEGER REFERENCES anki_packages(id);`,
+    `ALTER TABLE lemmas ADD COLUMN reading TEXT;`,
   ]) {
     try { expoDb.execSync(sql); } catch { /* column exists → skip */ }
   }

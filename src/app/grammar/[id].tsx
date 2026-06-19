@@ -18,7 +18,7 @@ import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useTheme } from '@/hooks/use-theme';
 import { completeTopic, getTopic, logGrammarAnswer } from '@/lib/grammar';
 import { XP_GRAMMAR_CORRECT, XP_GRAMMAR_WRONG, XP_LESSON_COMPLETE } from '@/lib/gamification';
-import { normalizeLatin } from '@/lib/latin/normalize';
+import { normalize } from '@/lib/text';
 import { toRoman } from '@/lib/roman';
 import { useApp } from '@/store/app';
 
@@ -166,7 +166,7 @@ export default function GrammarLesson() {
   };
 
   const checkInput = () => {
-    settle(normalizeLatin(input) === normalizeLatin(card.answer));
+    settle(normalize(input) === normalize(card.answer));
   };
 
   const pick = (opt: string) => {
@@ -190,9 +190,9 @@ export default function GrammarLesson() {
     setGraded(false);
   };
 
-  const inputCorrect = graded && normalizeLatin(input) === normalizeLatin(card.answer);
+  const inputCorrect = graded && normalize(input) === normalize(card.answer);
 
-  const normSeq = (words: string[]) => words.map(normalizeLatin).join(' ');
+  const normSeq = (words: string[]) => words.map(normalize).join(' ');
   const orderTarget = normSeq(card.answer.split(/\s+/));
   const orderCurrent = normSeq(order.map((i) => card.options?.[i] ?? ''));
   const orderCorrect = graded && orderCurrent === orderTarget;

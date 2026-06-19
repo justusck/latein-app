@@ -1,7 +1,8 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
+import { activeCourseId } from '@/courses/active';
 import { kvGetNum, kvSet } from '@/lib/kv';
-import { normalizeLatin } from '@/lib/latin/normalize';
+import { normalize } from '@/lib/text';
 import { getDictFormKeys } from '@/lib/reading';
 import type { EpubChapter } from '@/lib/reading/epub';
 
@@ -42,7 +43,7 @@ export function bumpDictRev(): void {
 }
 
 function cacheDir(): Directory {
-  return new Directory(Paths.cache, 'reader-html');
+  return new Directory(Paths.cache, `reader-html/${activeCourseId()}`);
 }
 
 function sanitizeId(id: string): string {
@@ -81,7 +82,7 @@ export function dropCachedReaderHtml(bookId: string): void {
 
 // ── Word wrapping (string-based — no DOM, no WebView round trip) ────────────
 
-const WORD_RE = /[A-Za-zÀ-ʯĀ-ſḀ-ỿ]+/g;
+const WORD_RE = /[A-Za-zÀ-ʯĀ-ſḀ-ỿぁ-ゟァ-ヿ一-鿿々]+/g;
 
 /**
  * Wrap every word of an HTML fragment in a span carrying its normalized key
@@ -97,7 +98,7 @@ function wrapHtmlFragment(html: string, dict: Set<string>): string {
     const seg = parts[i];
     if (!seg || seg.charCodeAt(0) === 60 /* '<' — tag, leave untouched */) continue;
     parts[i] = seg.replace(WORD_RE, (word) => {
-      const key = normalizeLatin(word);
+      const key = normalize(word);
       if (!key) return word;
       const cls = dict.has(key) ? 'w d' : 'w u';
       return `<span class="${cls}" data-k="${key}">${word}</span>`;

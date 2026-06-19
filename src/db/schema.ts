@@ -28,6 +28,7 @@ export const lemmas = sqliteTable('lemmas', {
   pos: text('pos').notNull(), // noun | verb | adj | adv | prep | conj | pron | ...
   principalParts: text('principal_parts'), // e.g. "amō, amāre, amāvī, amātum"
   info: text('info'), // declension/conjugation/gender notes
+  reading: text('reading'), // phonetic reading (Japanese furigana); null for Latin
   glossDe: text('gloss_de').notNull(),
   glossEn: text('gloss_en'),
   freqRank: integer('freq_rank'),

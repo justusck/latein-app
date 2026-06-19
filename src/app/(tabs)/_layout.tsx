@@ -3,9 +3,11 @@ import { Platform } from 'react-native';
 
 import { TabBarButton } from '@/components/ui/tab-bar-button';
 import { TabBarIcon } from '@/components/ui/tab-bar-icon';
+import { useCourse } from '@/hooks/use-course';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function TabsLayout() {
+  const { tabLabels } = useCourse();
   const theme = useTheme();
   return (
     <Tabs
@@ -42,7 +44,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Vokabeln',
+          title: tabLabels.vocab,
           tabBarIcon: ({ size, focused }) => (
             <TabBarIcon baseName="bookmark" size={size} focused={focused} />
           ),
@@ -51,7 +53,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="grammar"
         options={{
-          title: 'Grammatik',
+          title: tabLabels.grammar,
           tabBarIcon: ({ size, focused }) => (
             <TabBarIcon baseName="school" size={size} focused={focused} />
           ),
@@ -60,7 +62,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="ai"
         options={{
-          title: 'Magister',
+          title: tabLabels.ai,
           tabBarIcon: ({ size, focused }) => (
             <TabBarIcon baseName="mic" size={size} focused={focused} />
           ),
@@ -69,7 +71,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="library"
         options={{
-          title: 'Lesen',
+          title: tabLabels.library,
           tabBarIcon: ({ size, focused }) => (
             <TabBarIcon baseName="book" size={size} focused={focused} />
           ),

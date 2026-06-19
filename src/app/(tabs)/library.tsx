@@ -7,7 +7,9 @@ import { useCallback, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { CourseSwitcher } from '@/components/ui/course-switcher';
 import { TabScreen } from '@/components/ui/tab-screen';
+import { useCourse } from '@/hooks/use-course';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { getBooksWithCoverage, type BookCoverage } from '@/lib/knowledge';
@@ -17,6 +19,7 @@ import { buildReaderHtml, dropCachedReaderHtml } from '@/lib/reading/html-cache'
 
 export default function LibraryScreen() {
   const theme = useTheme();
+  const course = useCourse();
   const [items, setItems] = useState<BookCoverage[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -96,7 +99,7 @@ export default function LibraryScreen() {
   const total = items.length;
 
   return (
-    <TabScreen title="Bibliotheca">
+    <TabScreen title={course.tabLabels.library} titleExtra={<CourseSwitcher />}>
 
       {/* ── Summary + upload ── */}
       <View style={styles.summaryRow}>

@@ -1,47 +1,12 @@
+import { getActiveCourse } from '@/courses';
 import { buildKnowledgeContext } from '@/lib/knowledge';
 import { generateResponse, loadModel, getEngineStatus, onStatusChange } from './engine';
 import type { Pronunciation } from '@/store/app';
 
-/** On-device Gemma 4 conversation (no cloud API). */
+/** On-device AI conversation (Gemma 4 via llama.rn, or cloud API). */
 
-export type AiMode = 'chat' | 'roleplay' | 'correction';
-export type ChatMessage = { role: 'user' | 'assistant'; content: string };
-
-export const AI_MODES: { id: AiMode; label: string; opener: string }[] = [
-  { id: 'chat', label: 'Gespräch', opener: 'Salvē! Quōmodo tē habēs?' },
-  { id: 'roleplay', label: 'Rollenspiel', opener: 'Salvē! In forō sumus. Ego mercātor sum. Quid emere vīs?' },
-  { id: 'correction', label: 'Korrektur', opener: 'Scrībe mihi sententiam Latīnam — eam corrigam.' },
-];
-
-const BASE_INSTRUCTIONS = [
-  'Du bist ein KI-Assistent in einer Latein-Lern-App namens „Latīna".',
-  'Dein Name ist „Magister".',
-  '',
-  'WICHTIGSTE REGELN (absolut bindend):',
-  '1. Gib NIEMALS deinen Gedankengang, Überlegungen oder „thinking"-Prozess aus.',
-  '   Schreibe NUR die direkte Antwort — keinen inneren Monolog, kein „Lass mich',
-  '   überlegen…", kein „Als KI…", keine Meta-Kommentare.',
-  '2. Formatiere deine Antworten mit Markdown: **fett**, *kursiv*, `Code`,',
-  '   Aufzählungen mit - oder 1., Absätze mit Leerzeilen.',
-  '3. Schreibe deine lateinischen Sätze KURZ und EINFACH. Nutze möglichst nur',
-  '   Wortschatz und Grammatik, die der/die Lernende bereits beherrscht',
-  '   (siehe Kontext unten).',
-].join('\n');
-
-const MODE_INSTRUCTIONS: Record<AiMode, string> = {
-  chat:
-    'Führe ein natürliches, hilfreiches Gespräch auf Latein. Stelle leichte Rückfragen.\n' +
-    '⚠️ DEINE GESAMTE ANTWORT MUSS AUF LATEIN SEIN — jedes einzelne Wort.\n' +
-    'KEIN Deutsch, KEINE Übersetzungen in Klammern, KEINE Erklärungen.',
-  roleplay:
-    'Verkörpere den unten beschriebenen Charakter. Bleibe vollständig und konsequent in deiner Rolle.\n' +
-    '⚠️ DEINE GESAMTE ANTWORT MUSS AUF LATEIN SEIN — jedes einzelne Wort.\n' +
-    'KEIN Deutsch, KEINE Regieanweisungen, KEINE Übersetzungen.',
-  correction:
-    'Der/die Lernende schreibt lateinische Sätze. Korrigiere Fehler, lobe Gelungenes.\n' +
-    'Erkläre die Korrekturen kurz auf Deutsch. Formatiere so:\n' +
-    '**Fehler:** …\n**Korrektur:** …\n**Erklärung:** …',
-};
+export type { AiMode, ChatMessage } from './types';
+import type { AiMode, ChatMessage } from './types';
 
 function buildSystemPrompt(
   mode: AiMode,
@@ -49,6 +14,7 @@ function buildSystemPrompt(
   characterPrompt?: string,
   customPrompt?: string,
 ): string {
+  const { ai } = getActiveCourse();
   const knowledge = buildKnowledgeContext().summary;
   const extraParts: string[] = [];
 
@@ -61,9 +27,9 @@ function buildSystemPrompt(
   }
 
   return [
-    BASE_INSTRUCTIONS,
+    ai.baseInstructions,
     `\n\nAussprache-Kontext: ${pronunciation === 'classical' ? 'klassisch' : 'kirchlich'}.`,
-    `\n\nMODUS: ${MODE_INSTRUCTIONS[mode]}`,
+    `\n\nMODUS: ${ai.modeInstructions[mode]}`,
     `\n\n${knowledge}`,
     extraParts.length ? `\n\n${extraParts.join('\n\n')}` : '',
   ].join('');
@@ -104,14 +70,26 @@ export async function chat(opts: {
 // Re-export engine lifecycle functions so the UI can subscribe.
 export { loadModel, getEngineStatus, onStatusChange, unloadModel } from './engine';
 
-/** Extract just the Latin part (drop the "DE: …" helper line) and strip Markdown for TTS. */
-export function latinPart(text: string): string {
-  return text
-    .split('\n')
-    .filter((line) => !/^\s*(DE|de)\s*:/.test(line))
-    .join(' ')
-    .replace(/\([^)]*\)/g, '') // drop inline glosses
-    .replace(/[*_~`#]/g, '')   // drop Markdown formatting chars
-    .replace(/\s+/g, ' ')      // collapse whitespace
-    .trim();
+/**
+ * Course-aware AI mode descriptors (used by the chat tab for the mode picker).
+ * Previously exported as static `AI_MODES` — now a getter.
+ */
+export function getAiModes(): { id: AiMode; label: string; opener: string }[] {
+  const { ai } = getActiveCourse();
+  return [
+    { id: 'chat', label: 'Gespräch', opener: ai.openers.chat },
+    { id: 'roleplay', label: 'Rollenspiel', opener: ai.openers.roleplay },
+    { id: 'correction', label: 'Korrektur', opener: ai.openers.correction },
+  ];
 }
+
+/**
+ * Extract the target-language part of an AI reply for TTS (drop helper lines,
+ * strip Markdown formatting). Previously `latinPart` — now course-aware.
+ */
+export function speakablePart(text: string): string {
+  return getActiveCourse().ai.speakablePart(text);
+}
+
+/** Backwards-compat alias — still used by some callers. */
+export { speakablePart as latinPart };

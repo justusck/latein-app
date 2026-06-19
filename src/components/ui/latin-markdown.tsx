@@ -3,7 +3,7 @@ import { StyleSheet, Text, type TextStyle } from 'react-native';
 import Markdown, { type RenderRules, type ASTNode } from 'react-native-markdown-display';
 
 import { useTheme } from '@/hooks/use-theme';
-import { tokenizeLatin } from '@/lib/latin/normalize';
+import { tokenize } from '@/lib/text';
 
 type LatinMarkdownProps = {
   /** Markdown text to render with Latin word colour-coding. */
@@ -40,7 +40,7 @@ export function LatinMarkdown({
         const content: string = node.content;
         if (!content) return null;
 
-        const tokens = tokenizeLatin(content);
+        const tokens = tokenize(content);
         return (
           <Text key={node.key}>
             {tokens.map((t, i) => {

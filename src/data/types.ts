@@ -9,6 +9,8 @@ export type SeedLemma = {
   info?: string; // declension / conjugation / gender hint
   glossDe: string;
   glossEn?: string;
+  /** Phonetic reading (e.g. Japanese furigana / kana). Unused for Latin. */
+  reading?: string;
   freqRank: number;
   /** surface forms (any case) used for tap-to-gloss & coverage; macrons/casing
    *  are normalised at load time. The lemma itself is added automatically. */

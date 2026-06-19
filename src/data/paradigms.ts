@@ -7,7 +7,7 @@ export type Paradigm = {
   id: string;
   title: string;
   subtitle?: string;
-  kind: 'noun' | 'verb';
+  kind: string;
   topicId: string; // links to a grammar skill-tree node
   cols: string[];
   rows: { label: string; cells: string[] }[];

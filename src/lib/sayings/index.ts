@@ -5,7 +5,7 @@ import { db } from '@/db/client';
 import { sayings, wordForms } from '@/db/schema';
 import { kvGet, kvSet } from '@/lib/kv';
 import { getKnownLemmaIds } from '@/lib/knowledge';
-import { wordKeys } from '@/lib/latin/normalize';
+import { wordKeys } from '@/lib/text';
 
 export type Saying = {
   id: number;

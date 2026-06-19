@@ -1,10 +1,6 @@
 import { eq, inArray, lt, sql } from 'drizzle-orm';
 
-import { SEED_GRAMMAR } from '@/data/grammar';
-import { SEED_SAYINGS } from '@/data/sayings';
-
-import { SEED_VOCAB } from '@/data/vocab';
-import { normalizeLatin } from '@/lib/latin/normalize';
+import { getActiveCourse } from '@/courses';
 import { bumpDictRev } from '@/lib/reading/html-cache';
 import { IMPORT_ID_BASE } from '@/lib/vocab/import';
 
@@ -45,12 +41,12 @@ function currentSeedVersion(): number {
   }
 }
 
-/** Build the canonical form → lemmaId map from the seed vocab. */
+/** Build the canonical form → lemmaId map from the active course's seed vocab. */
 function buildFormMap(): Map<string, number> {
   const map = new Map<string, number>();
-  for (const v of SEED_VOCAB) {
-    const forms = new Set<string>([normalizeLatin(v.lemma), ...(v.forms ?? []).map(normalizeLatin)]);
-    for (const f of forms) {
+  const { seed, text } = getActiveCourse();
+  for (const v of seed.vocab) {
+    for (const f of text.buildForms(v)) {
       if (f && !map.has(f)) map.set(f, v.id);
     }
   }
@@ -58,6 +54,7 @@ function buildFormMap(): Map<string, number> {
 }
 
 function seedContent(formMap: Map<string, number>): void {
+  const { seed } = getActiveCourse();
   // Clear ONLY bundled content (user imports & uploads are preserved). FK
   // enforcement is disabled so we can replace parent rows that progress
   // tables reference.
@@ -78,12 +75,13 @@ function seedContent(formMap: Map<string, number>): void {
   db.delete(lemmas).where(lt(lemmas.id, IMPORT_ID_BASE)).run();
 
   // Lemmas (chunked — the full dataset exceeds SQLite's variable limit)
-  const lemmaRows = SEED_VOCAB.map((v) => ({
+  const lemmaRows = seed.vocab.map((v) => ({
     id: v.id,
     lemma: v.lemma,
     pos: v.pos,
     principalParts: v.principalParts ?? null,
     info: v.info ?? null,
+    reading: v.reading ?? null,
     glossDe: v.glossDe,
     glossEn: v.glossEn ?? null,
     freqRank: v.freqRank,
@@ -103,7 +101,7 @@ function seedContent(formMap: Map<string, number>): void {
   // Grammar topics + cards + initial progress
   db.insert(grammarTopics)
     .values(
-      SEED_GRAMMAR.map((t, i) => ({
+      seed.grammar.map((t, i) => ({
         id: t.id,
         title: t.title,
         summary: t.summary,
@@ -115,7 +113,7 @@ function seedContent(formMap: Map<string, number>): void {
     )
     .run();
 
-  const cardRows = SEED_GRAMMAR.flatMap((t) =>
+  const cardRows = seed.grammar.flatMap((t) =>
     t.cards.map((c) => ({
       id: c.id,
       topicId: t.id,
@@ -132,7 +130,7 @@ function seedContent(formMap: Map<string, number>): void {
   // Unlock topics whose prerequisites are empty; keep existing progress rows.
   db.insert(grammarProgress)
     .values(
-      SEED_GRAMMAR.map((t) => ({
+      seed.grammar.map((t) => ({
         topicId: t.id,
         unlocked: t.prereqs.length === 0,
         stars: 0,
@@ -141,11 +139,11 @@ function seedContent(formMap: Map<string, number>): void {
     .onConflictDoNothing()
     .run();
 
-  // Latin sayings
+  // Sayings (Latin proverbs / Japanese ことわざ — `latin` holds the target text)
   db.delete(sayings).run();
-  if (SEED_SAYINGS.length) {
+  if (seed.sayings.length) {
     db.insert(sayings)
-      .values(SEED_SAYINGS.map((s) => ({ id: s.id, latin: s.latin, german: s.german, source: s.source || null })))
+      .values(seed.sayings.map((s) => ({ id: s.id, latin: s.latin, german: s.german, source: s.source || null })))
       .run();
   }
 

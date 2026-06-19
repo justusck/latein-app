@@ -1,5 +1,6 @@
 import { eq, gte } from 'drizzle-orm';
 
+import { getActiveCourse } from '@/courses';
 import { db } from '@/db/client';
 import {
   bookLemmas,
@@ -99,18 +100,16 @@ export function buildKnowledgeContext(): {
   summary: string;
 } {
   const knownWords = getKnownLemmas().map((l) => `${l.lemma} (${l.glossDe})`);
-  const masteredGrammar = getMasteredGrammar().map((t) => t.title);
+  const masteredGrammarTitles = getMasteredGrammar().map((t) => t.title);
 
-  const vocabLine = knownWords.length
-    ? knownWords.join(', ')
-    : '(noch keine Vokabeln gefestigt — nutze nur allereinfachste Wörter)';
-  const grammarLine = masteredGrammar.length
-    ? masteredGrammar.join('; ')
-    : '(noch keine Grammatik gefestigt — nur Präsens & einfache Hauptsätze)';
+  const wordsForLabels = knownWords.length
+    ? knownWords
+    : [];
+  const grammarForLabels = masteredGrammarTitles.length
+    ? masteredGrammarTitles
+    : [];
 
-  const summary =
-    `BEHERRSCHTER WORTSCHATZ (${knownWords.length} Wörter): ${vocabLine}\n\n` +
-    `BEHERRSCHTE GRAMMATIK: ${grammarLine}`;
+  const summary = getActiveCourse().ai.knowledgeLabels(wordsForLabels, grammarForLabels);
 
-  return { knownWords, masteredGrammar, summary };
+  return { knownWords, masteredGrammar: masteredGrammarTitles, summary };
 }

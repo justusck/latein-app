@@ -9,8 +9,10 @@ import { Spacing } from '@/constants/theme';
 type TabScreenProps = {
   title: string;
   children: ReactNode;
-  /** Custom right-side actions in the header. Defaults to nothing (caller provides profile/settings). */
+  /** Custom right-side actions in the header. Replaces default streak + profile. */
   headerRight?: ReactNode;
+  /** Extra element between the title and the default right actions. */
+  titleExtra?: ReactNode;
   /** Remove bottom padding for screens that manage their own (e.g. chat input). */
   noBottomPadding?: boolean;
   /** Set false for screens that manage their own scroll container (e.g. chat with ref). */
@@ -22,10 +24,10 @@ type TabScreenProps = {
  * Every tab gets the same bones: safe area → header → content, with consistent spacing.
  * Content fades in subtly (150ms) on mount, making tab switches feel smooth.
  */
-export function TabScreen({ title, children, headerRight, noBottomPadding, scroll = true }: TabScreenProps) {
+export function TabScreen({ title, children, headerRight, titleExtra, noBottomPadding, scroll = true }: TabScreenProps) {
   return (
     <Screen scroll={scroll} padded={false} edges={['top']}>
-      <PageHeader title={title} right={headerRight} />
+      <PageHeader title={title} right={headerRight} titleExtra={titleExtra} />
       <View
         style={[
           styles.content,
