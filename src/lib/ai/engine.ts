@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { initLlama, type LlamaContext } from 'llama.rn';
+import { initLlama, type LlamaContext, type JinjaFormattedChatResult } from 'llama.rn';
 
 /** Gemma 4 E2B in GGUF format (Q4_K_M quantized, ~2.6 GB).
  *  Source: HuggingFace — switch repo/filename to use a different model. */
@@ -207,6 +207,39 @@ export async function resetDownload(): Promise<void> {
   setState({ ...EMPTY_STATUS, state: 'unloaded' });
 }
 
+// ── Chat formatting ──────────────────────────────────────────────────────────
+
+/**
+ * Format messages through the model's Jinja chat template and return the
+ * prepared prompt + parser metadata. This MUST be called before completion
+ * so llama.cpp knows how to separate thinking (reasoning_content) from the
+ * visible reply (content).
+ */
+async function formatChat(
+  messages: Array<{ role: string; content: string }>,
+  enableThinking: boolean,
+): Promise<JinjaFormattedChatResult> {
+  if (!ctx) throw new Error('Modell nicht bereit');
+
+  const result = await ctx.getFormattedChat(messages, null, {
+    jinja: true,
+    enable_thinking: enableThinking,
+    reasoning_format: enableThinking ? 'auto' : 'none',
+  });
+
+  if (result.type !== 'jinja') {
+    // Fallback: wrap in a Jinja-shaped result so the caller doesn't branch.
+    return {
+      type: 'jinja',
+      prompt: result.prompt,
+    } as JinjaFormattedChatResult;
+  }
+
+  return result;
+}
+
+// ── Completion ───────────────────────────────────────────────────────────────
+
 /** Run a single-turn chat completion (non-streaming, backward-compatible). */
 export async function generateResponse(
   messages: Array<{ role: string; content: string }>,
@@ -216,13 +249,23 @@ export async function generateResponse(
     throw new Error('Modell nicht bereit');
   }
 
+  const enableThinking = opts?.enableThinking ?? true;
+  const formatted = await formatChat(messages, enableThinking);
+
   const result = await ctx.completion({
-    messages,
+    prompt: formatted.prompt,
     n_predict: N_PREDICT,
     temperature: 0.7,
     top_p: 0.9,
     stop: ['<end_of_turn>', '<eos>'],
-    enable_thinking: opts?.enableThinking ?? true,
+    jinja: true,
+    enable_thinking: enableThinking,
+    reasoning_format: enableThinking ? 'auto' : 'none',
+    chat_parser: formatted.chat_parser,
+    grammar: formatted.grammar,
+    grammar_lazy: formatted.grammar_lazy,
+    grammar_triggers: formatted.grammar_triggers,
+    generation_prompt: formatted.generation_prompt,
   });
 
   return {
@@ -243,14 +286,24 @@ export async function generateResponseStream(
     throw new Error('Modell nicht bereit');
   }
 
+  const enableThinking = opts?.enableThinking ?? true;
+  const formatted = await formatChat(messages, enableThinking);
+
   const result = await ctx.completion(
     {
-      messages,
+      prompt: formatted.prompt,
       n_predict: N_PREDICT,
       temperature: 0.7,
       top_p: 0.9,
       stop: ['<end_of_turn>', '<eos>'],
-      enable_thinking: opts?.enableThinking ?? true,
+      jinja: true,
+      enable_thinking: enableThinking,
+      reasoning_format: enableThinking ? 'auto' : 'none',
+      chat_parser: formatted.chat_parser,
+      grammar: formatted.grammar,
+      grammar_lazy: formatted.grammar_lazy,
+      grammar_triggers: formatted.grammar_triggers,
+      generation_prompt: formatted.generation_prompt,
     },
     (data) => {
       onToken({
