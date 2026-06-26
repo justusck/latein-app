@@ -184,10 +184,11 @@ export async function loadModel(): Promise<void> {
         use_mlock: true,
         use_mmap: true,
       },
-      (progress: number) => {
-        if (progress >= 100) {
-          setState({ state: 'ready' });
-        }
+      (_progress: number) => {
+        // Progress callback — intentionally does NOT set state to 'ready'.
+        // Native callbacks can fire before the Promise resolves, which would
+        // create a window where status.state === 'ready' but ctx is still null.
+        // The 'ready' transition happens after ctx is assigned below.
       },
     );
 
