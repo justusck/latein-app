@@ -1,12 +1,12 @@
 import { getActiveCourse } from '@/courses';
 import { buildKnowledgeContext } from '@/lib/knowledge';
-import { generateResponse, loadModel, getEngineStatus, onStatusChange } from './engine';
+import { generateResponse, generateResponseStream, loadModel, getEngineStatus, onStatusChange } from './engine';
+import type { AiMode, ChatMessage } from './types';
 import type { Pronunciation } from '@/store/app';
 
 /** On-device AI conversation (Gemma 4 via llama.rn, or cloud API). */
 
 export type { AiMode, ChatMessage } from './types';
-import type { AiMode, ChatMessage } from './types';
 
 function buildSystemPrompt(
   mode: AiMode,
@@ -35,20 +35,11 @@ function buildSystemPrompt(
   ].join('');
 }
 
-export async function chat(opts: {
-  mode: AiMode;
-  history: ChatMessage[];
-  pronunciation: Pronunciation;
-  characterPrompt?: string;
-  customPrompt?: string;
-}): Promise<string> {
-  // Ensure model is loaded (no-op if already ready).
-  // loadModel handles download + init, idempotent.
+async function ensureModelReady(): Promise<void> {
   const status = getEngineStatus();
   if (status.state === 'unloaded' || status.state === 'error') {
     await loadModel();
   } else if (status.state === 'downloading' || status.state === 'loading') {
-    // Wait for ongoing load to finish — poll status changes
     await new Promise<void>((resolve, reject) => {
       const unsub = onStatusChange((s) => {
         if (s.state === 'ready') { unsub(); resolve(); }
@@ -56,6 +47,21 @@ export async function chat(opts: {
       });
     });
   }
+}
+
+/** Whether the active course's model supports chain-of-thought reasoning. */
+export function supportsThinking(): boolean {
+  return getActiveCourse().ai.supportsThinking === true;
+}
+
+export async function chat(opts: {
+  mode: AiMode;
+  history: ChatMessage[];
+  pronunciation: Pronunciation;
+  characterPrompt?: string;
+  customPrompt?: string;
+}): Promise<{ content: string; reasoning: string }> {
+  await ensureModelReady();
 
   const systemPrompt = buildSystemPrompt(opts.mode, opts.pronunciation, opts.characterPrompt, opts.customPrompt);
 
@@ -64,7 +70,34 @@ export async function chat(opts: {
     ...opts.history.map((m) => ({ role: m.role, content: m.content })),
   ];
 
-  return generateResponse(messages);
+  const enableThinking = supportsThinking();
+  return generateResponse(messages, { enableThinking });
+}
+
+/** Stream a chat completion token-by-token. Calls `onToken` for every
+ *  token with separated reasoning_content and content. Returns the full
+ *  result when the stream finishes. */
+export async function chatStream(
+  opts: {
+    mode: AiMode;
+    history: ChatMessage[];
+    pronunciation: Pronunciation;
+    characterPrompt?: string;
+    customPrompt?: string;
+  },
+  onToken: (data: { reasoning_content?: string; content?: string; token: string }) => void,
+): Promise<{ content: string; reasoning: string }> {
+  await ensureModelReady();
+
+  const systemPrompt = buildSystemPrompt(opts.mode, opts.pronunciation, opts.characterPrompt, opts.customPrompt);
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...opts.history.map((m) => ({ role: m.role, content: m.content })),
+  ];
+
+  const enableThinking = supportsThinking();
+  return generateResponseStream(messages, onToken, { enableThinking });
 }
 
 // Re-export engine lifecycle functions so the UI can subscribe.

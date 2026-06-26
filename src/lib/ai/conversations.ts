@@ -11,9 +11,14 @@ function opener(mode: AiMode): string {
   return getAiModes().find((m) => m.id === mode)?.opener ?? 'Salvē!';
 }
 
-export function appendMessage(conversationId: number, role: 'user' | 'assistant', content: string): void {
+export function appendMessage(
+  conversationId: number,
+  role: 'user' | 'assistant',
+  content: string,
+  reasoning?: string,
+): void {
   db.insert(aiMessages)
-    .values({ conversationId, role, content, createdAt: Date.now() })
+    .values({ conversationId, role, content, reasoning: reasoning ?? null, createdAt: Date.now() })
     .run();
 }
 
@@ -46,6 +51,10 @@ export function loadOrStart(mode: AiMode): Conversation {
   return {
     id: conv.id,
     mode,
-    messages: msgs.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    messages: msgs.map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+      reasoning: m.reasoning ?? undefined,
+    })),
   };
 }

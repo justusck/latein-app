@@ -206,10 +206,11 @@ export async function resetDownload(): Promise<void> {
   setState({ ...EMPTY_STATUS, state: 'unloaded' });
 }
 
-/** Run a single-turn chat completion. */
+/** Run a single-turn chat completion (non-streaming, backward-compatible). */
 export async function generateResponse(
   messages: Array<{ role: string; content: string }>,
-): Promise<string> {
+  opts?: { enableThinking?: boolean },
+): Promise<{ content: string; reasoning: string }> {
   if (!ctx || status.state !== 'ready') {
     throw new Error('Modell nicht bereit');
   }
@@ -220,9 +221,49 @@ export async function generateResponse(
     temperature: 0.7,
     top_p: 0.9,
     stop: ['<end_of_turn>', '<eos>'],
+    enable_thinking: opts?.enableThinking ?? true,
   });
 
-  return (result.content || result.text || '').trim();
+  return {
+    content: (result.content || result.text || '').trim(),
+    reasoning: (result.reasoning_content || '').trim(),
+  };
+}
+
+/** Stream a chat completion token-by-token. Calls `onToken` for each
+ *  token with separated reasoning_content and content. Returns the full
+ *  result when the stream finishes. */
+export async function generateResponseStream(
+  messages: Array<{ role: string; content: string }>,
+  onToken: (data: { reasoning_content?: string; content?: string; token: string }) => void,
+  opts?: { enableThinking?: boolean },
+): Promise<{ content: string; reasoning: string }> {
+  if (!ctx || status.state !== 'ready') {
+    throw new Error('Modell nicht bereit');
+  }
+
+  const result = await ctx.completion(
+    {
+      messages,
+      n_predict: N_PREDICT,
+      temperature: 0.7,
+      top_p: 0.9,
+      stop: ['<end_of_turn>', '<eos>'],
+      enable_thinking: opts?.enableThinking ?? true,
+    },
+    (data) => {
+      onToken({
+        reasoning_content: data.reasoning_content,
+        content: data.content,
+        token: data.token,
+      });
+    },
+  );
+
+  return {
+    content: (result.content || result.text || '').trim(),
+    reasoning: (result.reasoning_content || '').trim(),
+  };
 }
 
 /** Release the model from memory. */

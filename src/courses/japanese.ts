@@ -57,6 +57,7 @@ export const JAPANESE_COURSE: CourseConfig = {
   },
 
   ai: {
+    supportsThinking: true,
     baseInstructions: BASE_INSTRUCTIONS,
     modeInstructions: {
       chat:

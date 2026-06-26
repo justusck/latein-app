@@ -169,6 +169,7 @@ CREATE TABLE IF NOT EXISTS ai_messages (
   conversation_id INTEGER NOT NULL REFERENCES ai_conversations(id),
   role TEXT NOT NULL,
   content TEXT NOT NULL,
+  reasoning TEXT,
   created_at INTEGER NOT NULL
 );
 `;
@@ -188,6 +189,7 @@ export function initDatabase(): void {
     `ALTER TABLE books ADD COLUMN file_path TEXT;`,
     `ALTER TABLE lemmas ADD COLUMN package_id INTEGER REFERENCES anki_packages(id);`,
     `ALTER TABLE lemmas ADD COLUMN reading TEXT;`,
+    `ALTER TABLE ai_messages ADD COLUMN reasoning TEXT;`,
   ]) {
     try { expoDb.execSync(sql); } catch { /* column exists → skip */ }
   }

@@ -10,6 +10,7 @@ import { Colors, Spacing } from '@/constants/theme';
 import { getActiveCourse } from '@/courses';
 import { initDatabase } from '@/db/client';
 import { seedDatabase } from '@/db/seed';
+import { getEngineStatus, loadModel } from '@/lib/ai/engine';
 import { getDailySaying } from '@/lib/sayings';
 import { useApp } from '@/store/app';
 
@@ -33,6 +34,17 @@ export default function RootLayout() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setStatus('error');
+    }
+  }, []);
+
+  // Preload the on-device AI model in the background as soon as the app
+  // starts, so it's already in RAM when the user taps the AI tab.
+  useEffect(() => {
+    const s = getEngineStatus();
+    if (s.state === 'unloaded' || s.state === 'error') {
+      loadModel().catch(() => {
+        // Silently ignore — the AI tab surfaces errors when the user opens it.
+      });
     }
   }, []);
 

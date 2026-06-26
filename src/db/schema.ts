@@ -189,6 +189,7 @@ export const aiMessages = sqliteTable('ai_messages', {
     .references(() => aiConversations.id),
   role: text('role').notNull(), // user | assistant
   content: text('content').notNull(),
+  reasoning: text('reasoning'), // chain-of-thought (collapsed by default)
   createdAt: integer('created_at').notNull(),
 });
 

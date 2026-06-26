@@ -54,6 +54,10 @@ export interface CourseAiConfig {
   knowledgeLabels(knownWords: string[], masteredGrammar: string[]): string;
   /** Extract the target-language part of a reply for TTS (drop helper lines). */
   speakablePart(text: string): string;
+  /** Whether the model supports chain-of-thought reasoning.
+   *  When true, thinking tags are parsed into a collapsible bubble.
+   *  When false/absent, the engine disables thinking and the UI hides the bubble. */
+  supportsThinking?: boolean;
 }
 
 export interface CourseTtsConfig {

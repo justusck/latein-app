@@ -24,11 +24,12 @@ import { FadeInView } from '@/components/ui/fade-in';
 import { LatinMarkdown } from '@/components/ui/latin-markdown';
 import { CourseSwitcher } from '@/components/ui/course-switcher';
 import { TabScreen } from '@/components/ui/tab-screen';
+import { ThinkingBubble } from '@/components/ui/thinking-bubble';
 import { WordGlossPanel } from '@/components/ui/word-panel';
 import { useCourse } from '@/hooks/use-course';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { getAiModes, type AiMode, type ChatMessage, chat, speakablePart } from '@/lib/ai';
+import { getAiModes, type AiMode, type ChatMessage, chatStream, speakablePart, supportsThinking } from '@/lib/ai';
 import { getEngineStatus, loadModel, onStatusChange, resetDownload, type EngineStatus } from '@/lib/ai/engine';
 import { appendMessage, loadOrStart, startConversation, type Conversation } from '@/lib/ai/conversations';
 import { XP_AI_TURN } from '@/lib/gamification';
@@ -61,6 +62,10 @@ export default function AiScreen() {
   const [sending, setSending] = useState(false);
   const [knowledge, setKnowledge] = useState({ words: 0, grammar: 0 });
   const [pageWidth, setPageWidth] = useState(0);
+
+  // Streaming state — token-by-token output during generation
+  const [streamingReasoning, setStreamingReasoning] = useState('');
+  const [streamingContent, setStreamingContent] = useState('');
 
   // Word gloss state
   const [knownKeys] = useState(() => getKnownFormKeys());
@@ -193,15 +198,29 @@ export default function AiScreen() {
     appendMessage(st.conv.id, 'user', userText);
 
     setSending(true);
+    setStreamingReasoning('');
+    setStreamingContent('');
+
     try {
-      const reply = await chat({
-        mode,
-        history,
-        pronunciation,
-        characterPrompt: mode === 'roleplay' ? characterPrompt : undefined,
-        customPrompt: kvGet('ai_custom_prompt') ?? undefined,
-      });
-      appendMessage(st.conv.id, 'assistant', reply);
+      const result = await chatStream(
+        {
+          mode,
+          history,
+          pronunciation,
+          characterPrompt: mode === 'roleplay' ? characterPrompt : undefined,
+          customPrompt: kvGet('ai_custom_prompt') ?? undefined,
+        },
+        (data) => {
+          if (data.reasoning_content) {
+            setStreamingReasoning((prev) => prev + data.reasoning_content);
+          }
+          if (data.content) {
+            setStreamingContent((prev) => prev + data.content);
+          }
+        },
+      );
+
+      appendMessage(st.conv.id, 'assistant', result.content, result.reasoning || undefined);
       setStates((prev) => {
         const c = prev[mode].conv;
         if (!c) return prev;
@@ -209,7 +228,17 @@ export default function AiScreen() {
           ...prev,
           [mode]: {
             ...prev[mode],
-            conv: { ...c, messages: [...c.messages, { role: 'assistant', content: reply }] },
+            conv: {
+              ...c,
+              messages: [
+                ...c.messages,
+                {
+                  role: 'assistant' as const,
+                  content: result.content,
+                  reasoning: result.reasoning || undefined,
+                },
+              ],
+            },
           },
         };
       });
@@ -219,6 +248,8 @@ export default function AiScreen() {
       updateMode(mode, { error: e instanceof Error ? e.message : String(e) });
     } finally {
       setSending(false);
+      setStreamingReasoning('');
+      setStreamingContent('');
     }
   };
 
@@ -461,7 +492,29 @@ export default function AiScreen() {
                         { backgroundColor: theme.card, borderColor: theme.border },
                       ]}
                     >
-                      <ActivityIndicator color={theme.primary} size="small" />
+                      {supportsThinking() && (
+                        <ThinkingBubble
+                          reasoning={streamingReasoning}
+                          streaming={true}
+                          style={{ marginBottom: streamingContent ? Spacing.two : 0 }}
+                        />
+                      )}
+                      {streamingContent ? (
+                        <LatinMarkdown
+                          knownKeys={knownKeys}
+                          dictKeys={dictKeys}
+                          onWordPress={onWordPress}
+                          theme={theme}
+                        >
+                          {streamingContent}
+                        </LatinMarkdown>
+                      ) : !supportsThinking() ? (
+                        <ActivityIndicator color={theme.primary} size="small" />
+                      ) : (
+                        <Text style={[styles.streamingHint, { color: theme.textSecondary }]}>
+                          …
+                        </Text>
+                      )}
                     </View>
                   )}
 
@@ -561,6 +614,7 @@ function Bubble({
   onSpeak: () => void;
 }) {
   const isUser = message.role === 'user';
+  const hasReasoning = !!message.reasoning;
 
   if (isUser) {
     return (
@@ -586,6 +640,13 @@ function Bubble({
         { backgroundColor: theme.card, borderColor: theme.border, opacity: pressed ? 0.85 : 1 },
       ]}
     >
+      {hasReasoning && (
+        <ThinkingBubble
+          reasoning={message.reasoning!}
+          streaming={false}
+          style={{ marginBottom: Spacing.two }}
+        />
+      )}
       <LatinMarkdown
         knownKeys={knownKeys}
         dictKeys={dictKeys}
@@ -772,5 +833,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
+  },
+  streamingHint: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    paddingVertical: Spacing.one,
   },
 });

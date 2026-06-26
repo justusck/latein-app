@@ -53,6 +53,7 @@ export const LATIN_COURSE: CourseConfig = {
   },
 
   ai: {
+    supportsThinking: true,
     baseInstructions: BASE_INSTRUCTIONS,
     modeInstructions: {
       chat:
